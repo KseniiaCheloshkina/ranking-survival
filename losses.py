@@ -1,45 +1,33 @@
-import keras.backend as K
+import tensorflow as tf
 
-def binary_cross_entropy_survival(y_true, y_pred):
-    
-    """
-    y_pred (, 4) - output of network
-        y_pred[:, 0:2] - weibull parameters for first input
-        y_pred[:, 2:4] - weibull parameters for second input
-    y_true (, 4) - target
-        y_true[:, 0] - t for first input
-        y_true[:, 1] - t for second input  
-        y_true[:, 2] - target (1 if q1 == q2 and 0 otherwise)
-        y_true[:, 3] - sample weight 
-    """
-    
-    # get a probaility    
-    t_a = y_true[:, 0]
-    t_b = y_true[:, 1]
-    o = y_true[:, 2]
-    q = y_true[:, 3]
-    
-    y_pred_a = y_pred[:, 0:2]
-    y_pred_b = y_pred[:, 2:4]
 
-    s_a = calc_survival_value(t_a, y_pred_a)
-    s_b = calc_survival_value(t_b, y_pred_b)
-    sigm = K.sigmoid(s_a - s_b)
-    sigm = K.clip(sigm, K.epsilon(), 1 - K.epsilon())
-    
-    # weighted binary cross entropy
-    label_pos = o * K.log(sigm + K.epsilon())
-    label_neg = (1 - o) * K.log(1 + K.epsilon() - sigm) * (q + 1)  
-    print(s_a)
-    print(s_b)
-    return -1 * K.mean(label_pos + label_neg)
+def calc_survival_value(alphas, betas, t):
+    s = tf.exp(-1 * tf.pow(tf.divide(t, alphas + 1e-6), betas))
+    return s
 
-   
-def calc_survival_value(y_true, y_pred):
-    
-    alphas = y_pred[:, 0]
-    betas = y_pred[:, 1]
-    # TODO: clipping     sigm = K.clip(sigm, K.epsilon(), 1 - K.epsilon())
-    s = K.exp(-1 * K.pow(y_true / (alphas + 1e-6), betas))
-              
-    return s                                              
+
+def calc_likelyhood(alphas, betas, t, y):
+    ev = tf.multiply(y, tf.add(tf.multiply(betas, tf.log(tf.divide(t, alphas + 1e-6))), tf.log(betas)))
+    lh = tf.subtract(ev, tf.pow(tf.divide(t, alphas + 1e-6), betas))
+    return lh
+
+
+def binary_cross_entropy_loss(t_a, t_b, alphas_a, betas_a, alphas_b, betas_b, target, sample_weight):
+    s_a = calc_survival_value(t=t_a, alphas=alphas_a, betas=betas_a)
+    s_b = calc_survival_value(t=t_b, alphas=alphas_b, betas=betas_b)
+    sigm = tf.nn.sigmoid(s_a - s_b)
+    sigm = tf.clip_by_value(sigm, 1e-6, 1 - 1e-6)
+    label_pos = tf.multiply(target, tf.log(sigm + 1e-6))
+    # TODO: check which is better
+    label_neg = tf.multiply(1 - target, tf.multiply(tf.log(1 + 1e-6 - sigm), sample_weight))
+    label_neg = tf.multiply(1 - target, tf.log(1 + 1e-6 - sigm))
+    # TODO: check which is better
+    ll = tf.add(label_pos, label_neg)
+    mean_ll = -1 * tf.reduce_mean(ll)
+    return mean_ll
+
+
+def weibull_loglikelyhood_loss(t, y, alphas, betas):
+    lh_a = calc_likelyhood(t=t, y=y, alphas=alphas, betas=betas)
+    mean_lh = -1 * tf.reduce_mean(lh_a)
+    return mean_lh
