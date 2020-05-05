@@ -18,10 +18,7 @@ def binary_cross_entropy_loss(t_a, t_b, alphas_a, betas_a, alphas_b, betas_b, ta
     sigm = tf.nn.sigmoid(s_a - s_b)
     sigm = tf.clip_by_value(sigm, 1e-6, 1 - 1e-6)
     label_pos = tf.multiply(target, tf.log(sigm + 1e-6))
-    # TODO: check which is better
     label_neg = tf.multiply(1 - target, tf.multiply(tf.log(1 + 1e-6 - sigm), sample_weight))
-    label_neg = tf.multiply(1 - target, tf.log(1 + 1e-6 - sigm))
-    # TODO: check which is better
     ll = tf.add(label_pos, label_neg)
     mean_ll = -1 * tf.reduce_mean(ll)
     return mean_ll
