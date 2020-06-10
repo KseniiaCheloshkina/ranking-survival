@@ -152,6 +152,8 @@ class ContrastiveDataGenerator(CommonDataGenerator):
     Each batch has balanced number of positive and negative examples.
     The target is defined for pairs comparable in terms of Harell's C-index
     The samples in a batch are taken uniformly from event time distribution
+    Note: number of positive examples is significantly lower than number
+    of negative examples
     """
     def __init__(self, x, t, y, batch_size, n_time_bins):
 

@@ -53,3 +53,53 @@ def test_quality(t_true, y_true, pred,
             'int_nbill': int_nbill
         }
     ])
+
+
+def preprocess_kkbox(df):
+
+    def get_one_hot_encoded(values, cat_series):
+        out_array = np.zeros((cat_series.shape[0], len(values)))
+        for val in values:
+            out_array[:, val] = (cat_series == val).astype(int)
+        return out_array
+
+    df1 = df.copy(deep=True)
+    # target
+    t = df['duration'].astype(int).values
+    y = df['event'].astype(int).values
+    # work with cat features
+    df1['city'] = df['city'].astype(str).astype(float).fillna(0).astype(int)
+    gender_map = {
+        'male': 1,
+        'female': 2
+    }
+    df1['gender'] = df['gender'].astype(str).map(gender_map).fillna(0).astype(int)
+    registered_via_cats_map = {
+        'nan': 0,
+        '9.0': 1,
+        '7.0': 2,
+        '4.0': 3,
+        '3.0': 4,
+        '16.0': 5,
+        '13.0': 6,
+        '10.0': 7
+    }
+    df1['registered_via'] = df['registered_via'].astype(str).map(registered_via_cats_map)
+    # categories to one-hot
+    gender_values = [0, 1, 2]
+    city_values = np.arange(23)  # 23 unique values
+    registered_via_values = np.arange(8)  # 8 unique values
+    gender_ = get_one_hot_encoded(gender_values, df1['gender'])
+    city_ = get_one_hot_encoded(city_values, df1['city'])
+    registered_via_values_ = get_one_hot_encoded(registered_via_values, df1['registered_via'])
+    # binary cols as is
+    binary_cols = ['is_auto_renew', 'is_cancel', 'strange_age', 'nan_days_since_reg_init', 'no_prev_churns']
+    binary_ = df1[binary_cols].values
+    # continous cols  - apply batchnorm in network
+    batchnorm_cols = ['n_prev_churns', 'log_days_between_subs', 'log_days_since_reg_init', 'log_payment_plan_days',
+                      'log_plan_list_price',
+                      'log_actual_amount_paid', 'age_at_start']
+    batchnorm_ = df1[batchnorm_cols].values
+    # final features
+    x = np.hstack([gender_, city_, registered_via_values_, binary_, batchnorm_])
+    return x, t, y

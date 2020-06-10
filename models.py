@@ -4,116 +4,180 @@ import tensorflow as tf
 import losses
 
 
-class Model(object):
+def metabric_main_network(input_tensor, seed):
+    n_units = 4
+    output_tensor = tf.layers.dense(inputs=input_tensor, units=n_units,
+                                    kernel_initializer=tf.keras.initializers.glorot_normal(seed=seed),
+                                    bias_initializer=tf.keras.initializers.glorot_normal(seed=seed + 1),
+                                    name='main_network_dense')
+    output_shape = [None, n_units]
+    return output_tensor, output_shape
 
-    def __init__(self, input_shape, seed=7, alpha_reg=1e-3):
-        # TODO: add main network to init arguments
+
+def kkbox_main_network(input_tensor, units_in_layers, dropout, seed):
+
+    """
+    :param input_tensor: Tensor for input to the model
+    :param units_in_layers: List(int) - list of number of nodes per layer
+    :param dropout: float specifying dropout proba
+    :param seed: seed for weights initializations
+    """
+    is_training = tf.compat.v1.placeholder_with_default(False, (), name='is_training')
+
+    # entity embeddings
+    gender_matrix = tf.Variable(tf.random.normal(shape=[3, 1], seed=seed), name='gender_matrix')
+    gender_embed = tf.matmul(input_tensor[:, 0:3], gender_matrix, name='gender_embed')
+
+    city_matrix = tf.Variable(tf.random.normal(shape=[23, 4], seed=seed), name='city_matrix')
+    city_embed = tf.matmul(input_tensor[:, 3:26], city_matrix, name='city_embed')
+
+    reg_matrix = tf.Variable(tf.random.normal(shape=[8, 2], seed=seed), name='reg_matrix')
+    reg_embed = tf.matmul(input_tensor[:, 26:34], reg_matrix, name='reg_embed')
+
+    entity_embed = tf.concat((gender_embed, city_embed, reg_embed), axis=1, name='entity_embed_concat')
+    # final input
+    cont_vars = tf.keras.layers.BatchNormalization()(inputs=input_tensor[:, -7:],
+                                                     training=is_training)
+    data = tf.concat((entity_embed, input_tensor[:, 34:38], cont_vars), axis=1, name='preproc_input')
+
+    for layer_ind, layer_units in enumerate(units_in_layers):
+        dense = tf.keras.layers.Dense(units=layer_units, activation='relu',
+                                      kernel_initializer=tf.keras.initializers.glorot_normal(seed=seed),
+                                      bias_initializer=tf.keras.initializers.glorot_normal(seed=seed + 1),
+                                      name='dense_layer_' + str(layer_ind))(inputs=data)
+        data = tf.nn.dropout(dense, rate=dropout, seed=seed, name='dropout_' + str(layer_ind))
+
+    output_shape = [None, layer_units]
+    return data, output_shape
+
+
+class WeibullModel(object):
+
+    def __init__(self, input_shape, main_network=metabric_main_network, seed=7, alpha_reg=1e-3):
         self.alpha_reg = alpha_reg
+        self.main_network = main_network
 
         self.seed = seed
         random.seed(self.seed)
         np.random.seed(self.seed)
-        tf.set_random_seed(self.seed)
+        tf.compat.v1.set_random_seed(self.seed)
         
         # features
-        self.x_a = tf.placeholder(tf.float32, input_shape)
-        self.x_b = tf.placeholder(tf.float32, input_shape)
+        self.x_a = tf.compat.v1.placeholder(tf.float32, input_shape, name='x_a')
+        self.x_b = tf.compat.v1.placeholder(tf.float32, input_shape, name='x_b')
 
         # time to event
-        self.t_a = tf.placeholder(tf.float32, [None, 1], name='t_a')
-        self.t_b = tf.placeholder(tf.float32, [None, 1], name='t_b')
+        self.t_a = tf.compat.v1.placeholder(tf.float32, [None, 1], name='t_a')
+        self.t_b = tf.compat.v1.placeholder(tf.float32, [None, 1], name='t_b')
 
         # event label
-        self.y_a = tf.placeholder(tf.float32, [None, 1], name='y_a')
-        self.y_b = tf.placeholder(tf.float32, [None, 1], name='y_b')
+        self.y_a = tf.compat.v1.placeholder(tf.float32, [None, 1], name='y_a')
+        self.y_b = tf.compat.v1.placeholder(tf.float32, [None, 1], name='y_b')
 
-        self.target = tf.placeholder(tf.float32, [None, 1], name='target')
-        self.sample_weight = tf.placeholder(tf.float32, [None, 1], name='sample_weight')
+        self.target = tf.compat.v1.placeholder(tf.float32, [None, 1], name='target')
+        self.sample_weight = tf.compat.v1.placeholder(tf.float32, [None, 1], name='sample_weight')
 
-        with tf.variable_scope("siamese", reuse=tf.AUTO_REUSE) as scope:
+        self.o1 = None
+        self.o2 = None
+        self.set_outputs()
+        self.alphas_a = None
+        self.betas_a = None
+        self.alphas_b = None
+        self.betas_b = None
+        self.loss = self.calc_loss()
+
+    def set_outputs(self):
+        with tf.compat.v1.variable_scope("siamese", reuse=tf.compat.v1.AUTO_REUSE) as scope:
             self.o1 = self.siamese_net(self.x_a)
             scope.reuse_variables()
             self.o2 = self.siamese_net(self.x_b)
 
-        self.loss = self.calc_loss()
-    
-    def siamese_net(self, x):
-        # main network
-        output = tf.layers.dense(inputs=x, units=4, 
-                                 kernel_initializer=tf.keras.initializers.glorot_normal(seed=self.seed),
-                                 bias_initializer=tf.keras.initializers.glorot_normal(seed=self.seed + 1),
-                                 name='dense')
-
+    def layer_weibull_parameters(self, input_t, input_shape=[None, 4]):
         # alpha weibull parameter
-        alpha_weights = tf.Variable(tf.random_normal(shape=[4, 1], seed=self.seed))
-        alpha_bias = tf.Variable(tf.random_normal(shape=[1], seed=self.seed))
-        alpha = tf.add(tf.matmul(output, alpha_weights), alpha_bias)
+        alpha_weights = tf.Variable(tf.random.normal(shape=[input_shape[1], 1], seed=self.seed), name='alpha_weight')
+        alpha_bias = tf.Variable(tf.random.normal(shape=[1], seed=self.seed), name='alpha_bias')
+        alpha = tf.add(tf.matmul(input_t, alpha_weights), alpha_bias, name='alpha_out')
         alpha = tf.clip_by_value(alpha, 0, 12, name='alpha_clipping')
         alpha = tf.exp(alpha, name='alpha_act')
         alpha = tf.reshape(alpha, (tf.shape(alpha)[0], 1), name='alpha_reshaped')
         # beta weibull parameter
-        beta_weights = tf.Variable(tf.random_normal(shape=[4, 1], seed=self.seed))
-        beta_bias = tf.Variable(tf.random_normal(shape=[1], seed=self.seed))
-        beta = tf.add(tf.matmul(output, beta_weights), beta_bias)
+        beta_weights = tf.Variable(tf.random.normal(shape=[input_shape[1], 1], seed=self.seed), name='beta_weight')
+        beta_bias = tf.Variable(tf.random.normal(shape=[1], seed=self.seed), name='beta_bias')
+        beta = tf.add(tf.matmul(input_t, beta_weights), beta_bias, name='beta_out')
         beta = tf.clip_by_value(beta, 0, 2, name='beta_clipping')
         beta = tf.nn.softplus(beta, name='beta_act')
         beta = tf.reshape(beta, (tf.shape(beta)[0], 1), name='beta_reshaped')
         # concat weibull parameters
         output = tf.concat((alpha, beta), axis=1, name='wp_concat')
-        
+        return output
+
+    def siamese_net(self, x):
+        output, output_shape = self.main_network(input_tensor=x, seed=self.seed)
+        output = self.layer_weibull_parameters(output, output_shape)
         return output
     
     def calc_loss(self):
-        pass
+        return self.get_survival_loss()
 
-
-class BinaryRankingModel(Model):
-
-    def __init__(self, input_shape, seed=7, alpha_reg=1e-3, cross_entropy_weight=1):
-        self.cross_entropy_weight = cross_entropy_weight
-        super().__init__(input_shape, seed, alpha_reg)
-
-    def calc_loss(self):
-
+    def get_survival_loss(self):
         sh = tf.shape(self.t_a)
-        alphas_a = tf.reshape(self.o1[:, 0], sh, name='alpha_reshaped_loss')
-        betas_a = tf.reshape(self.o1[:, 1], sh, name='beta_reshaped_loss')
+        self.alphas_a = tf.reshape(self.o1[:, 0], sh, name='alpha_reshaped_loss')
+        self.betas_a = tf.reshape(self.o1[:, 1], sh, name='beta_reshaped_loss')
         # weibull log likelihood for first sample
-        mean_lh_a = losses.weibull_loglikelyhood_loss(self.t_a, self.y_a, alphas_a, betas_a)
+        mean_lh_a = losses.weibull_loglikelyhood_loss(self.t_a, self.y_a, self.alphas_a, self.betas_a)
 
-        alphas_b = tf.reshape(self.o2[:, 0], sh, name='alpha_reshaped_loss')
-        betas_b = tf.reshape(self.o2[:, 1], sh, name='beta_reshaped_loss')
+        self.alphas_b = tf.reshape(self.o2[:, 0], sh, name='alpha_reshaped_loss')
+        self.betas_b = tf.reshape(self.o2[:, 1], sh, name='beta_reshaped_loss')
         # weibull log likelihood for second sample
-        mean_lh_b = losses.weibull_loglikelyhood_loss(self.t_b, self.y_b, alphas_b, betas_b)
+        mean_lh_b = losses.weibull_loglikelyhood_loss(self.t_b, self.y_b, self.alphas_b, self.betas_b)
 
         # alpha regularizer
-        all_alphas = tf.add(alphas_a, alphas_b)
-        mean_sq_alpha = tf.reduce_mean(all_alphas)
-
-        # binary cross-entropy
-        mean_ll = losses.binary_cross_entropy_loss(self.t_a, self.t_b, alphas_a, betas_a, alphas_b, betas_b,
-                                                   self.target, self.sample_weight)
-
-        return mean_lh_b + mean_lh_a + self.alpha_reg * mean_sq_alpha + self.cross_entropy_weight * mean_ll
-
-
-class WeibullModel(Model):
-
-    def calc_loss(self):
-
-        sh = tf.shape(self.t_a)
-        alphas_a = tf.reshape(self.o1[:, 0], sh, name='alpha_reshaped_loss')
-        betas_a = tf.reshape(self.o1[:, 1], sh, name='beta_reshaped_loss')
-        # weibull log likelihood for first sample
-        mean_lh_a = losses.weibull_loglikelyhood_loss(self.t_a, self.y_a, alphas_a, betas_a)
-
-        alphas_b = tf.reshape(self.o2[:, 0], sh, name='alpha_reshaped_loss')
-        betas_b = tf.reshape(self.o2[:, 1], sh, name='beta_reshaped_loss')
-        # weibull log likelihood for second sample
-        mean_lh_b = losses.weibull_loglikelyhood_loss(self.t_b, self.y_b, alphas_b, betas_b)
-
-        # alpha regularizer
-        all_alphas = tf.add(alphas_a, alphas_b)
+        all_alphas = tf.add(self.alphas_a, self.alphas_b, name='survival_loss_alpha_beta_sum')
         mean_sq_alpha = tf.reduce_mean(all_alphas)
 
         return mean_lh_b + mean_lh_a + self.alpha_reg * mean_sq_alpha
+
+
+class BinaryRankingModel(WeibullModel):
+
+    def __init__(self, input_shape, main_network, seed=7, alpha_reg=1e-3, cross_entropy_weight=1):
+        self.cross_entropy_weight = cross_entropy_weight
+        super().__init__(input_shape, main_network, seed, alpha_reg)
+
+    def calc_loss(self):
+        main_loss = self.get_survival_loss()
+        # binary cross-entropy
+        mean_ll = losses.binary_cross_entropy_loss(self.t_a, self.t_b, self.alphas_a, self.betas_a,
+                                                   self.alphas_b, self.betas_b, self.target, self.sample_weight)
+        return main_loss + self.cross_entropy_weight * mean_ll
+
+
+class ContrastiveRankingModel(WeibullModel):
+
+    def __init__(self, input_shape, main_network, seed=7, alpha_reg=1e-3, contrastive_weight=1, margin_weight=1):
+        self.contrastive_weight = contrastive_weight
+        self.margin_weight = margin_weight
+        self.o1_transformed = None
+        self.o2_transformed = None
+        super().__init__(input_shape, main_network, seed, alpha_reg)
+
+    def siamese_net(self, x):
+        output, output_shape = self.main_network(input_tensor=x, seed=self.seed)
+        output = self.layer_weibull_parameters(output, output_shape)
+        # linear transformation
+        w_wb = tf.Variable(tf.random_normal(shape=[2, 2], seed=self.seed), name='par_transform')
+        output_transform = tf.matmul(output, w_wb, name='transformed_out')
+        return output, output_transform
+
+    def set_outputs(self):
+        with tf.variable_scope("siamese", reuse=tf.AUTO_REUSE) as scope:
+            self.o1, self.o1_transformed = self.siamese_net(self.x_a)
+            scope.reuse_variables()
+            self.o2, self.o2_transformed = self.siamese_net(self.x_b)
+
+    def calc_loss(self):
+        self.main_loss = self.get_survival_loss()
+        # contrastive (margin) loss
+        mean_contr_loss = losses.contrastive_margin_loss(self.o1_transformed, self.o2_transformed, self.target,
+                                                         self.margin_weight * self.sample_weight)
+        return tf.add(self.main_loss, self.contrastive_weight * mean_contr_loss, name='sum_losses')
