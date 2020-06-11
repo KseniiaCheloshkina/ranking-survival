@@ -25,20 +25,26 @@ def kkbox_main_network(input_tensor, units_in_layers, dropout, seed):
     is_training = tf.compat.v1.placeholder_with_default(False, (), name='is_training')
 
     # entity embeddings
-    gender_matrix = tf.Variable(tf.random.normal(shape=[3, 1], seed=seed), name='gender_matrix')
-    gender_embed = tf.matmul(input_tensor[:, 0:3], gender_matrix, name='gender_embed')
+    gender_matrix = tf.Variable(tf.random.normal(shape=[2, 1], seed=seed), name='gender_matrix')
+    gender_na_bias = tf.Variable(tf.random.normal(shape=[1], seed=seed), name='gender_na_bias')
+    gender_embed = tf.add(tf.matmul(input_tensor[:, 0:2], gender_matrix, name='gender_embed'),
+                          gender_na_bias, name='gender_out')
 
-    city_matrix = tf.Variable(tf.random.normal(shape=[23, 4], seed=seed), name='city_matrix')
-    city_embed = tf.matmul(input_tensor[:, 3:26], city_matrix, name='city_embed')
+    city_matrix = tf.Variable(tf.random.normal(shape=[21, 4], seed=seed), name='city_matrix')
+    city_na_bias = tf.Variable(tf.random.normal(shape=[1], seed=seed), name='city_na_bias')
+    city_embed = tf.add(tf.matmul(input_tensor[:, 2:23], city_matrix, name='city_embed'),
+                        city_na_bias, name='city_out')
 
-    reg_matrix = tf.Variable(tf.random.normal(shape=[8, 2], seed=seed), name='reg_matrix')
-    reg_embed = tf.matmul(input_tensor[:, 26:34], reg_matrix, name='reg_embed')
+    reg_matrix = tf.Variable(tf.random.normal(shape=[5, 2], seed=seed), name='reg_matrix')
+    reg_na_bias = tf.Variable(tf.random.normal(shape=[1], seed=seed), name='reg_na_bias')
+    reg_embed = tf.add(tf.matmul(input_tensor[:, 23:28], reg_matrix, name='reg_embed'),
+                       reg_na_bias, name='reg_out')
 
     entity_embed = tf.concat((gender_embed, city_embed, reg_embed), axis=1, name='entity_embed_concat')
     # final input
-    cont_vars = tf.keras.layers.BatchNormalization()(inputs=input_tensor[:, -7:],
+    cont_vars = tf.keras.layers.BatchNormalization()(inputs=input_tensor[:, 32:],
                                                      training=is_training)
-    data = tf.concat((entity_embed, input_tensor[:, 34:38], cont_vars), axis=1, name='preproc_input')
+    data = tf.concat((entity_embed, input_tensor[:, 28:32], cont_vars), axis=1, name='preproc_input')
 
     for layer_ind, layer_units in enumerate(units_in_layers):
         dense = tf.keras.layers.Dense(units=layer_units, activation='relu',
@@ -92,7 +98,7 @@ class WeibullModel(object):
             scope.reuse_variables()
             self.o2 = self.siamese_net(self.x_b)
 
-    def layer_weibull_parameters(self, input_t, input_shape=[None, 4]):
+    def layer_weibull_parameters(self, input_t, input_shape):
         # alpha weibull parameter
         alpha_weights = tf.Variable(tf.random.normal(shape=[input_shape[1], 1], seed=self.seed), name='alpha_weight')
         alpha_bias = tf.Variable(tf.random.normal(shape=[1], seed=self.seed), name='alpha_bias')

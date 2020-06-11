@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 def test_quality(t_true, y_true, pred,
                  time_grid=np.linspace(0, 300, 30, dtype=np.int),
-                 concordance_at_t=None):
+                 concordance_at_t=None, plot=False):
     # get survival proba for time_grid
     all_surv_time = pd.DataFrame()
     for t in time_grid:
@@ -28,22 +28,23 @@ def test_quality(t_true, y_true, pred,
     int_brier_score = ev.integrated_brier_score(time_grid)
     int_nbill = ev.integrated_nbll(time_grid)
 
-    # fig, ax = plt.subplots(1, 3, figsize=(20, 7))
-    # d = all_surv_time.sample(5, axis=1).loc[1:]
-    # obs = d.columns
-    # for o in obs:
-    #     ax[0].plot(d.index, d[o])
-    # ax[0].set_xlabel('Time')
-    # ax[0].set_title("Sample survival curves")
-    # nb = ev.nbll(time_grid)
-    # ax[1].plot(time_grid, nb)
-    # ax[1].set_title('NBLL')
-    # ax[1].set_xlabel('Time')
-    # br = ev.brier_score(time_grid)
-    # ax[2].plot(time_grid, br)
-    # ax[2].set_title('Brier score')
-    # ax[2].set_xlabel('Time')
-    # plt.show();
+    if plot:
+        fig, ax = plt.subplots(1, 3, figsize=(20, 7))
+        d = all_surv_time.sample(5, axis=1).loc[1:]
+        obs = d.columns
+        for o in obs:
+            ax[0].plot(d.index, d[o])
+        ax[0].set_xlabel('Time')
+        ax[0].set_title("Sample survival curves")
+        nb = ev.nbll(time_grid)
+        ax[1].plot(time_grid, nb)
+        ax[1].set_title('NBLL')
+        ax[1].set_xlabel('Time')
+        br = ev.brier_score(time_grid)
+        ax[2].plot(time_grid, br)
+        ax[2].set_title('Brier score')
+        ax[2].set_xlabel('Time')
+        plt.show();
 
     return pd.DataFrame([
         {
@@ -56,7 +57,6 @@ def test_quality(t_true, y_true, pred,
 
 
 def preprocess_kkbox(df):
-
     def get_one_hot_encoded(values, cat_series):
         out_array = np.zeros((cat_series.shape[0], len(values)))
         for val in values:
@@ -68,27 +68,49 @@ def preprocess_kkbox(df):
     t = df['duration'].astype(int).values
     y = df['event'].astype(int).values
     # work with cat features
-    df1['city'] = df['city'].astype(str).astype(float).fillna(0).astype(int)
     gender_map = {
-        'male': 1,
-        'female': 2
+        'male': 0,
+        'female': 1
     }
     df1['gender'] = df['gender'].astype(str).map(gender_map).fillna(0).astype(int)
-    registered_via_cats_map = {
-        'nan': 0,
-        '9.0': 1,
-        '7.0': 2,
-        '4.0': 3,
-        '3.0': 4,
-        '16.0': 5,
-        '13.0': 6,
-        '10.0': 7
+
+    cities_map = {
+        '1.0': 0,
+        '10.0': 1,
+        '11.0': 2,
+        '12.0': 3,
+        '13.0': 4,
+        '14.0': 5,
+        '15.0': 6,
+        '16.0': 7,
+        '17.0': 8,
+        '18.0': 9,
+        '19.0': 10,
+        '20.0': 11,
+        '21.0': 12,
+        '22.0': 13,
+        '3.0': 14,
+        '4.0': 15,
+        '5.0': 16,
+        '6.0': 17,
+        '7.0': 18,
+        '8.0': 19,
+        '9.0': 20
     }
-    df1['registered_via'] = df['registered_via'].astype(str).map(registered_via_cats_map)
+    df1['city'] = df['city'].astype(str).map(cities_map)
+
+    registered_via_cats_map = {
+        '9.0': 0,
+        '7.0': 1,
+        '3.0': 2,
+        '4.0': 3,
+        '13.0': 4
+    }
+    df1['registered_via'] = df['registered_via'].astype(float).astype(str).map(registered_via_cats_map)
     # categories to one-hot
-    gender_values = [0, 1, 2]
-    city_values = np.arange(23)  # 23 unique values
-    registered_via_values = np.arange(8)  # 8 unique values
+    gender_values = [0, 1]
+    city_values = np.arange(21)
+    registered_via_values = np.arange(5)
     gender_ = get_one_hot_encoded(gender_values, df1['gender'])
     city_ = get_one_hot_encoded(city_values, df1['city'])
     registered_via_values_ = get_one_hot_encoded(registered_via_values, df1['registered_via'])
