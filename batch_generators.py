@@ -115,7 +115,7 @@ class CommonDataGenerator(object):
                 ex = p[:, i]
                 dq_cur[i] = self.dq_m[ex[0]][ex[1]]
 
-            # fill batch data with positive examples
+            # fill batch data with examples
             x_batch_left[start_ind:end_ind, :] = self.x[p[0], :]
             x_batch_right[start_ind:end_ind, :] = self.x[p[1], :]
             y_batch[start_ind:end_ind, 0] = self.t[p[0]]

@@ -65,7 +65,7 @@ def preprocess_kkbox(df):
 
     df1 = df.copy(deep=True)
     # target
-    t = df['duration'].astype(int).values
+    t = df['duration'].values
     y = df['event'].astype(int).values
     # work with cat features
     gender_map = {

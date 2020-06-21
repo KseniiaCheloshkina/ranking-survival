@@ -140,7 +140,9 @@ class WeibullModel(object):
         # alpha regularizer
         all_alphas = tf.add(self.alphas_a, self.alphas_b, name='survival_loss_alpha_beta_sum')
         mean_sq_alpha = tf.reduce_mean(all_alphas)
-
+        self.mean_sq_alpha = mean_sq_alpha
+        self.mean_lh_a = mean_lh_a
+        self.mean_lh_b = mean_lh_b
         return mean_lh_b + mean_lh_a + self.alpha_reg * mean_sq_alpha
 
 

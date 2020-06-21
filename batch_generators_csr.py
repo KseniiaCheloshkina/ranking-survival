@@ -32,7 +32,7 @@ class CommonDataGenerator(object):
         """
 
         n = t.shape[0]
-        m = np.max(t)
+        t = t.astype(int)
 
         y_csr = csr_matrix(y)
         y_csr = y_csr.transpose()
@@ -49,11 +49,15 @@ class CommonDataGenerator(object):
         t_less_ti = csr_matrix((n, 1))
         # we will overwrite this matrix with each t_cur (on each step contains indices of elements for which t > t_cur)
         t_more_ti = csr_matrix(np.ones((n, 1)))
-        ind_t_un = np.where(t_uniq == 1)[0]
-        ind_t_cur = np.where(uniq_indices == ind_t_un)[0]
+        min_t = np.min(t)
+        ind_t_un = np.where(t_uniq == min_t)[0]
+        if ind_t_un.shape[0] != 0:
+            ind_t_cur = np.where(uniq_indices == ind_t_un)[0]
+        else:
+            ind_t_cur = np.array([], dtype=int)
 
         # we will iterate through observations with t == t_cur
-        for t_cur in tqdm.notebook.tqdm(range(2, m)):
+        for t_cur in tqdm.notebook.tqdm(np.sort(t_uniq[t_uniq != min_t])):
             # keep only those which are less than t_cur - 1
             t_less_ti += csr_matrix(
                 (
@@ -80,20 +84,59 @@ class CommonDataGenerator(object):
             ind_t_un = np.where(t_uniq == t_cur)[0]
             ind_t_cur = np.where(uniq_indices == ind_t_un)[0]
 
+            ### find comparable examples for observations with t == t_cur and y = 0
             t_cur_y_0 = np.intersect1d(y_zero_ind, ind_t_cur)
-            # find comparable examples for observations with t == t_cur and y = 0
             res_0 = y_csr.multiply(t_less_ti)
             # t_cur_y_0 are comparable with res[res == 1]
             m2 = t_cur_y_0.shape[0]
-            if res_0.count_nonzero() >= m2 * pairs_per_sample:
+            m1 = res_0.count_nonzero()
+
+            if (m1 > pairs_per_sample) and (m2 > 0):
                 # sample pair for each example
-                ind_nonzero_sampled = np.random.choice(res_0.nonzero()[0], size=m2 * pairs_per_sample, replace=False)
+                ind_nonzero_sampled = np.random.choice(res_0.nonzero()[0], size=pairs_per_sample, replace=False)
                 final_comp_pairs = csr_matrix(
                     (
                         np.ones((pairs_per_sample * m2,)),
                         (
                             np.repeat(t_cur_y_0, pairs_per_sample),
-                            ind_nonzero_sampled
+                            np.ravel(np.repeat(ind_nonzero_sampled.reshape((pairs_per_sample, 1)), m2, axis=1),
+                                     order='F')
+
+                        )
+                    ),
+                    shape=(n, n))
+                comparability_m += final_comp_pairs
+                target_m += final_comp_pairs
+
+                dq_m += csr_matrix(
+                    (
+                        np.ravel(q[ind_nonzero_sampled] - q[t_cur_y_0].reshape((m2, 1)), order='C'),
+                        (
+                            np.repeat(t_cur_y_0, pairs_per_sample),
+                            np.ravel(np.repeat(ind_nonzero_sampled.reshape((pairs_per_sample, 1)), m2, axis=1),
+                                     order='F')
+                        )
+                    ),
+                    shape=(n, n))
+                dq_m_0 += csr_matrix(
+                    (
+                        np.ravel((q[ind_nonzero_sampled] == q[t_cur_y_0].reshape((m2, 1))).astype(int), order='C'),
+                        (
+                            np.repeat(t_cur_y_0, pairs_per_sample),
+                            np.ravel(np.repeat(ind_nonzero_sampled.reshape((pairs_per_sample, 1)), m2, axis=1),
+                                     order='F')
+                        )
+                    ),
+                    shape=(n, n))
+
+            elif (m1 > 0) and (m2 > 0):
+                ind_nonzero = res_0.nonzero()[0]
+                final_comp_pairs = csr_matrix(
+                    (
+                        np.ones((m1 * m2,)),
+                        (
+                            np.repeat(t_cur_y_0, m1),
+                            np.ravel(np.repeat(ind_nonzero.reshape((m1, 1)), m2, axis=1), order='F')
                         )
                     ),
                     shape=(n, n))
@@ -101,64 +144,108 @@ class CommonDataGenerator(object):
                 target_m += final_comp_pairs
                 dq_m += csr_matrix(
                     (
-                        q[ind_nonzero_sampled] - q[np.repeat(t_cur_y_0, pairs_per_sample)],
+                        np.ravel(q[ind_nonzero] - q[t_cur_y_0].reshape((m2, 1)), order='C'),
                         (
-                            np.repeat(t_cur_y_0, pairs_per_sample),
-                            ind_nonzero_sampled
+                            np.repeat(t_cur_y_0, m1),
+                            np.ravel(np.repeat(ind_nonzero.reshape((m1, 1)), m2, axis=1), order='F')
                         )
                     ),
                     shape=(n, n))
                 dq_m_0 += csr_matrix(
                     (
-                        (q[ind_nonzero_sampled] == q[np.repeat(t_cur_y_0, pairs_per_sample)]).astype(int),
+                        np.ravel((q[ind_nonzero] == q[t_cur_y_0].reshape((m2, 1))).astype(int), order='C'),
                         (
-                            np.repeat(t_cur_y_0, pairs_per_sample),
-                            ind_nonzero_sampled
+                            np.repeat(t_cur_y_0, m1),
+                            np.ravel(np.repeat(ind_nonzero.reshape((m1, 1)), m2, axis=1), order='F')
                         )
                     ),
                     shape=(n, n))
 
+            ### find comparable examples for observations with t == t_cur and y = 1
             t_cur_y_0 = np.intersect1d(y_nonzero_ind, ind_t_cur)
-            # find comparable examples for observations with t == t_cur and y = 1
             res_1 = t_more_ti.multiply(csr_matrix(np.ones((n, 1))) - y_csr) + y_csr
             # t_cur_y_0 are comparable with res[res == 1]
             m2 = t_cur_y_0.shape[0]
-            if res_1.count_nonzero() >= m2 * pairs_per_sample:
+            m1 = res_1.count_nonzero()
+            if m1 > pairs_per_sample:
                 # sample pair for each example
-                ind_nonzero_sampled = np.random.choice(res_1.nonzero()[0], size=m2 * pairs_per_sample, replace=False)
+                ind_nonzero_sampled = np.random.choice(res_1.nonzero()[0], size=pairs_per_sample, replace=False)
                 comparability_m += csr_matrix(
                     (
                         np.ones((pairs_per_sample * m2,)),
                         (
                             np.repeat(t_cur_y_0, pairs_per_sample),
-                            ind_nonzero_sampled
+                            np.ravel(np.repeat(ind_nonzero_sampled.reshape((pairs_per_sample, 1)), m2, axis=1),
+                                     order='F')
                         )
                     ),
                     shape=(n, n))
                 target_m += csr_matrix(
                     (
-                        np.reshape(res_0[ind_nonzero_sampled, :].toarray(), ind_nonzero_sampled.shape),
+                        np.ravel(np.repeat(res_0[ind_nonzero_sampled, :].toarray(), m2, axis=1), order='F'),
                         (
                             np.repeat(t_cur_y_0, pairs_per_sample),
-                            ind_nonzero_sampled
+                            np.ravel(np.repeat(ind_nonzero_sampled.reshape((pairs_per_sample, 1)), m2, axis=1),
+                                     order='F')
                         )
                     ),
                     shape=(n, n))
                 dq_m += csr_matrix(
                     (
-                        q[ind_nonzero_sampled] - q[np.repeat(t_cur_y_0, pairs_per_sample)],
+                        np.ravel(q[ind_nonzero_sampled] - q[t_cur_y_0].reshape((m2, 1)), order='C'),
                         (
                             np.repeat(t_cur_y_0, pairs_per_sample),
-                            ind_nonzero_sampled
+                            np.ravel(np.repeat(ind_nonzero_sampled.reshape((pairs_per_sample, 1)), m2, axis=1),
+                                     order='F')
                         )
                     ),
                     shape=(n, n))
                 dq_m_0 += csr_matrix(
                     (
-                        (q[ind_nonzero_sampled] == q[np.repeat(t_cur_y_0, pairs_per_sample)]).astype(int),
+                        np.ravel((q[ind_nonzero_sampled] == q[t_cur_y_0].reshape((m2, 1))).astype(int), order='C'),
                         (
                             np.repeat(t_cur_y_0, pairs_per_sample),
-                            ind_nonzero_sampled
+                            np.ravel(np.repeat(ind_nonzero_sampled.reshape((pairs_per_sample, 1)), m2, axis=1),
+                                     order='F')
+                        )
+                    ),
+                    shape=(n, n))
+            elif (m1 > 0) and (m2 > 0):
+                ind_nonzero = res_1.nonzero()[0]
+                comparability_m += csr_matrix(
+                    (
+                        np.ones((m1 * m2,)),
+                        (
+                            np.repeat(t_cur_y_0, m1),
+                            np.ravel(np.repeat(ind_nonzero.reshape((m1, 1)), m2, axis=1), order='F')
+                        )
+                    ),
+                    shape=(n, n))
+                target_m += csr_matrix(
+                    (
+                        np.ravel(np.repeat(res_0[ind_nonzero, :].toarray(), m2, axis=1), order='F'),
+                        (
+                            np.repeat(t_cur_y_0, m1),
+                            np.ravel(np.repeat(ind_nonzero.reshape((m1, 1)), m2, axis=1), order='F')
+                        )
+                    ),
+                    shape=(n, n))
+
+                dq_m += csr_matrix(
+                    (
+                        np.ravel(q[ind_nonzero] - q[t_cur_y_0].reshape((m2, 1)), order='C'),
+                        (
+                            np.repeat(t_cur_y_0, m1),
+                            np.ravel(np.repeat(ind_nonzero.reshape((m1, 1)), m2, axis=1), order='F')
+                        )
+                    ),
+                    shape=(n, n))
+                dq_m_0 += csr_matrix(
+                    (
+                        np.ravel((q[ind_nonzero] == q[t_cur_y_0].reshape((m2, 1))).astype(int), order='C'),
+                        (
+                            np.repeat(t_cur_y_0, m1),
+                            np.ravel(np.repeat(ind_nonzero.reshape((m1, 1)), m2, axis=1), order='F')
                         )
                     ),
                     shape=(n, n))
@@ -208,13 +295,17 @@ class CommonDataGenerator(object):
         self.ij_pos_sorted = self.ij_pos[:, pos_ind_sorted_by_q]
         neg_ind_sorted_by_q = np.argsort(self.q[self.ij_neg[0]])
         self.ij_neg_sorted = self.ij_neg[:, neg_ind_sorted_by_q]
+        return self
+
+    def set_batch_size(self, batch_size):
+        self.half_batch_size = int(batch_size // 2)
+        self.batch_size = self.half_batch_size * 2
         self.constant_target = np.hstack(
             [
                 np.repeat(a=1, repeats=self.half_batch_size),
                 np.repeat(a=0, repeats=self.half_batch_size)
             ]
         )
-        return self
 
     def get_batch(self):
 
@@ -242,7 +333,7 @@ class CommonDataGenerator(object):
                 ex = p[:, i]
                 dq_cur[i] = self.dq_m[ex[0], ex[1]]
 
-            # fill batch data with positive examples
+            # fill batch data with examples
             x_batch_left[start_ind:end_ind, :] = self.x[p[0], :]
             x_batch_right[start_ind:end_ind, :] = self.x[p[1], :]
             y_batch[start_ind:end_ind, 0] = self.t[p[0]]
@@ -285,13 +376,11 @@ class ContrastiveDataGenerator(CommonDataGenerator):
     def __init__(self, x, t, y, batch_size, n_time_bins, pairs_per_sample):
         print("Initialization of batch generator...")
         super().__init__(x, t, y, batch_size, n_time_bins, pairs_per_sample)
-        print("define all positive examples")
         # define all possible and all negative examples
         self.pos_ex = self.comparability_m.multiply(self.dq_m_0)
-        print("define all negative examples")
         self.neg_ex = self.comparability_m - self.pos_ex
-        print("get stats")
         self.get_stats()
+        self.set_batch_size(self.batch_size)
         print("Initialization of batch generator is completed")
 
 
@@ -304,18 +393,12 @@ class BinaryDataGenerator(CommonDataGenerator):
     The samples in a batch are taken uniformly from event time distribution
     """
     def __init__(self, x, t, y, batch_size, n_time_bins, pairs_per_sample):
-        print(time.localtime())
+
         print("Initialization of batch generator...")
         super().__init__(x, t, y, batch_size, n_time_bins, pairs_per_sample)
-        print(time.localtime())
-        print("define all positive examples")
         # define all possible and all negative examples
         self.pos_ex = self.comparability_m.multiply(self.target_m)
-        print(time.localtime())
-        print("define all negative examples")
         self.neg_ex = self.comparability_m - self.pos_ex
-        print(time.localtime())
-        print("get stats")
         self.get_stats()
-        print(time.localtime())
+        self.set_batch_size(self.batch_size)
         print("Initialization of batch generator is completed")
