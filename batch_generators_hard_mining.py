@@ -76,7 +76,6 @@ class ContrastiveDataGenerator(object):
         self.n_ex_bin = n_ex_bin
         self.unused_cur = None
         self.total_anchors_cur = None
-        # self.constant_target = None
 
         # split examples on given number of time bins and get time bin index for each example
         self.q = get_time_bins(t=self.t, n_time_bins=self.n_time_bins)
@@ -96,8 +95,7 @@ class ContrastiveDataGenerator(object):
     def batch_generator(self):
         """
         Returns:
-            x_batch_left - features of batch examples
-            x_batch_right - features of batch examples (equal to x_batch_left)
+            x_batch - features of batch examples
             y_batch - [duration(t) of batch examples, duration(t) of batch examples, event label(y) of batch examples,
                 event label(y) of batch examples]
             sample_weight - matrix of ones
@@ -119,15 +117,12 @@ class ContrastiveDataGenerator(object):
         self.total_anchors_cur = np.bincount(self.q[self.unused_cur == 1])
 
         # fill in matrices with features
-        x_batch_left = self.x[all_anchors, :]
-        x_batch_right = self.x[all_anchors, :]
+        x_batch = self.x[all_anchors, :]
         y_batch = np.hstack([
             self.t[all_anchors].reshape(all_anchors.shape[0], 1),
-            self.t[all_anchors].reshape(all_anchors.shape[0], 1),
             self.y[all_anchors].reshape(all_anchors.shape[0], 1),
-            self.y[all_anchors].reshape(all_anchors.shape[0], 1)
         ])
         sample_weight = np.ones((all_anchors.shape[0], 1))
         # save time bin of example in target
         target = np.reshape(self.q[all_anchors], (all_anchors.shape[0], 1))
-        return [x_batch_left, x_batch_right], y_batch, sample_weight, target
+        return x_batch, y_batch, sample_weight, target

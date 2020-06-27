@@ -32,17 +32,17 @@ def test_bg():
     initial_time_bin_counts = np.array([31, 30, 31, 30, 30, 31, 30, 31, 30, 31])
     assert np.all(np.equal(dg.total_anchors, initial_time_bin_counts))
     ind_to_check = np.array([138, 15, 103, 198, 304, 282, 222, 216, 277, 271, 284, 18, 70, 5, 111, 275, 145, 21])
-    [x_batch_left, x_batch_right], y_batch, sample_weight, target = next(batch_generator)
+    x_batch, y_batch, sample_weight, target = next(batch_generator)
 
     # test shapes
-    assert y_batch.shape == (n_ex_bin * n_time_bins, 4)
+    assert y_batch.shape == (n_ex_bin * n_time_bins, 2)
     assert sample_weight.shape == target.shape == (n_ex_bin * n_time_bins, 1)
-    assert x_batch_left.shape == x_batch_right.shape == (n_ex_bin * n_time_bins, 9)
+    assert x_batch.shape == (n_ex_bin * n_time_bins, 9)
 
     # test algorithm
     assert np.all(initial_time_bin_counts - dg.total_anchors_cur == n_ex_bin)
     assert np.all(dg.unused_cur[ind_to_check] == 1.)
-    [x_batch_left, x_batch_right], y_batch, sample_weight, target = next(batch_generator)
+    x_batch, y_batch, sample_weight, target = next(batch_generator)
     assert np.all(dg.unused_cur[ind_to_check] == 0.)
     assert np.all(initial_time_bin_counts - dg.total_anchors_cur == n_ex_bin * 2)
     assert np.all(np.bincount(target.reshape(target.shape[0])) == n_ex_bin)
@@ -50,11 +50,11 @@ def test_bg():
     # test comparability matrix
     # calculate on numpy
     comparability_m = get_valid_pairs(t=y_batch[:, 0].reshape(y_batch.shape[0], ),
-                                      y=y_batch[:, 2].reshape(y_batch.shape[0], )).astype(int)
+                                      y=y_batch[:, 1].reshape(y_batch.shape[0], )).astype(int)
     # calculate on tensorflow
     comparability_tf = get_valid_pairs_tf(
         t=y_batch[:, 0].reshape(y_batch.shape[0], ),
-        y=y_batch[:, 2].reshape(y_batch.shape[0], )
+        y=y_batch[:, 1].reshape(y_batch.shape[0], )
     )
     with tf.compat.v1.Session() as sess:
         sess.run(tf.compat.v1.global_variables_initializer())

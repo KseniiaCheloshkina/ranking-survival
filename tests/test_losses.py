@@ -30,20 +30,20 @@ def test_losses():
     n_time_bins = 10
     dg = ContrastiveDataGenerator(x=x_val, t=t_val, y=y_val, n_time_bins=n_time_bins, n_ex_bin=n_ex_bin)
     batch_generator = dg.get_batch()
-    [x_batch_left, x_batch_right], y_batch, sample_weight, target = next(batch_generator)
+    x_batch, y_batch, sample_weight, target = next(batch_generator)
 
     # calculate comparability
     comparability_tf = get_valid_pairs_tf(
         t=y_batch[:, 0].reshape(y_batch.shape[0], ),
-        y=y_batch[:, 2].reshape(y_batch.shape[0], )
+        y=y_batch[:, 1].reshape(y_batch.shape[0], )
     )
     positive_mask = get_contrastive_positive_label(target)
     negative_mask = get_contrastive_negative_label(target)
-    dist = calc_batch_distances(x_batch_left)
+    dist = calc_batch_distances(x_batch)
     hardest_positive_dist, hardest_negative_dist, mean_loss = batch_hard_sampling_contrastive_loss(
-        output_tr=x_batch_left, time_bin=target,
+        output_tr=x_batch, time_bin=target,
         t=y_batch[:, 0].reshape(y_batch.shape[0], ),
-        y=y_batch[:, 2].reshape(y_batch.shape[0], )
+        y=y_batch[:, 1].reshape(y_batch.shape[0], )
     )
     with tf.compat.v1.Session() as sess:
         sess.run(tf.compat.v1.global_variables_initializer())

@@ -73,7 +73,7 @@ def calc_batch_distances(v):
     return distances
 
 
-def batch_hard_sampling_contrastive_loss(output_tr, time_bin, t, y):
+def batch_hard_sampling_contrastive_loss(output_tr, time_bin, t, y, margin_scale):
     # get labels
     pos_label = get_contrastive_positive_label(time_bin)
     neg_label = get_contrastive_negative_label(time_bin)
@@ -88,7 +88,7 @@ def batch_hard_sampling_contrastive_loss(output_tr, time_bin, t, y):
     anchor_positive_dist = tf.multiply(pos_label, distances)
     hardest_positive_dist = tf.reduce_max(anchor_positive_dist, axis=1, keepdims=True)
     # remove duplicate examples
-    hardest_positive_dist = tf.reshape(hardest_positive_dist, (hardest_positive_dist.shape[0], ))
+    hardest_positive_dist = tf.reshape(hardest_positive_dist, (tf.shape(hardest_positive_dist)[0], ))
     hardest_positive_dist, _ = tf.unique(hardest_positive_dist)
     # filter relevant positive examples
     mask_greater_zero = tf.greater(hardest_positive_dist, tf.constant(0, dtype=tf.float32))
@@ -110,9 +110,10 @@ def batch_hard_sampling_contrastive_loss(output_tr, time_bin, t, y):
     delta_time_bin = tf.abs(tf.subtract(tf.reshape(time_bin, (tf.shape(time_bin)[0], )), time_bin))
     n_time_bins = tf.add(
         tf.subtract(tf.reduce_max(time_bin), tf.reduce_min(time_bin)),
-        tf.constant(1, dtype=tf.int64)
+        tf.constant(1, dtype=tf.float32)
     )
-    sample_weight = tf.cast(tf.add(tf.constant(1, dtype=tf.float64), delta_time_bin / n_time_bins), tf.float32)
+    sample_weight = tf.cast(tf.add(tf.constant(1, dtype=tf.float32), delta_time_bin / n_time_bins), tf.float32)
+    sample_weight = margin_scale * sample_weight
     sample_weight = tf.gather_nd(sample_weight, ind_min)
     hardest_negative_dist_margin = tf.math.maximum(
         tf.subtract(tf.reshape(sample_weight, (tf.shape(sample_weight)[0], 1)), hardest_negative_dist),
