@@ -86,10 +86,7 @@ def batch_hard_sampling_contrastive_loss(output_tr, time_bin, t, y, margin_scale
 
     # get hardest positive examples
     anchor_positive_dist = tf.multiply(pos_label, distances)
-    hardest_positive_dist = tf.reduce_max(anchor_positive_dist, axis=1, keepdims=True)
-    # remove duplicate examples
-    hardest_positive_dist = tf.reshape(hardest_positive_dist, (tf.shape(hardest_positive_dist)[0], ))
-    hardest_positive_dist, _ = tf.unique(hardest_positive_dist)
+    hardest_positive_dist = tf.reduce_max(anchor_positive_dist, axis=1, keepdims=False)
     # filter relevant positive examples
     mask_greater_zero = tf.greater(hardest_positive_dist, tf.constant(0, dtype=tf.float32))
     hardest_positive_dist = tf.boolean_mask(hardest_positive_dist,  mask_greater_zero)
