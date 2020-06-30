@@ -1,6 +1,8 @@
-import numpy as np
 import random
+
+import numpy as np
 import tensorflow as tf
+
 import losses
 
 
@@ -22,8 +24,6 @@ def kkbox_main_network(input_tensor, units_in_layers, dropout, seed):
     :param dropout: float specifying dropout proba
     :param seed: seed for weights initializations
     """
-    is_training = tf.compat.v1.placeholder_with_default(False, (), name='is_training')
-
     # entity embeddings
     gender_matrix = tf.Variable(tf.random.normal(shape=[2, 1], seed=seed), name='gender_matrix')
     gender_na_bias = tf.Variable(tf.random.normal(shape=[1], seed=seed), name='gender_na_bias')
@@ -42,9 +42,7 @@ def kkbox_main_network(input_tensor, units_in_layers, dropout, seed):
 
     entity_embed = tf.concat((gender_embed, city_embed, reg_embed), axis=1, name='entity_embed_concat')
     # final input
-    cont_vars = tf.keras.layers.BatchNormalization()(inputs=input_tensor[:, 32:],
-                                                     training=is_training)
-    data = tf.concat((entity_embed, input_tensor[:, 28:32], cont_vars), axis=1, name='preproc_input')
+    data = tf.concat((entity_embed, input_tensor[:, 28:]), axis=1, name='preproc_input')
 
     for layer_ind, layer_units in enumerate(units_in_layers):
         dense = tf.keras.layers.Dense(units=layer_units, activation='relu',
@@ -59,9 +57,13 @@ def kkbox_main_network(input_tensor, units_in_layers, dropout, seed):
 
 class WeibullModel(object):
 
-    def __init__(self, input_shape, main_network=metabric_main_network, seed=7, alpha_reg=1e-3):
+    def __init__(self, input_shape, main_network=metabric_main_network, seed=7, alpha_reg=1e-3,
+                 alpha_bias_random_mean=0.0, alpha_random_stddev=1.0, beta_random_stddev=1.0):
         self.alpha_reg = alpha_reg
         self.main_network = main_network
+        self.alpha_bias_random_mean = alpha_bias_random_mean
+        self.alpha_random_stddev = alpha_random_stddev
+        self.beta_random_stddev = beta_random_stddev
 
         self.seed = seed
         random.seed(self.seed)
@@ -100,15 +102,19 @@ class WeibullModel(object):
 
     def layer_weibull_parameters(self, input_t, input_shape):
         # alpha weibull parameter
-        alpha_weights = tf.Variable(tf.random.normal(shape=[input_shape[1], 1], seed=self.seed), name='alpha_weight')
-        alpha_bias = tf.Variable(tf.random.normal(shape=[1], seed=self.seed), name='alpha_bias')
+        alpha_weights = tf.Variable(tf.random.normal(shape=[input_shape[1], 1], seed=self.seed,
+                                                     stddev=self.alpha_random_stddev), name='alpha_weight')
+        alpha_bias = tf.Variable(tf.random.normal(shape=[1], seed=self.seed, stddev=self.alpha_random_stddev,
+                                                  mean=self.alpha_bias_random_mean), name='alpha_bias')
         alpha = tf.add(tf.matmul(input_t, alpha_weights), alpha_bias, name='alpha_out')
         alpha = tf.clip_by_value(alpha, 0, 12, name='alpha_clipping')
         alpha = tf.exp(alpha, name='alpha_act')
         alpha = tf.reshape(alpha, (tf.shape(alpha)[0], 1), name='alpha_reshaped')
         # beta weibull parameter
-        beta_weights = tf.Variable(tf.random.normal(shape=[input_shape[1], 1], seed=self.seed), name='beta_weight')
-        beta_bias = tf.Variable(tf.random.normal(shape=[1], seed=self.seed), name='beta_bias')
+        beta_weights = tf.Variable(tf.random.normal(shape=[input_shape[1], 1], seed=self.seed,
+                                                    stddev=self.beta_random_stddev), name='beta_weight')
+        beta_bias = tf.Variable(tf.random.normal(shape=[1], seed=self.seed, stddev=self.beta_random_stddev),
+                                name='beta_bias')
         beta = tf.add(tf.matmul(input_t, beta_weights), beta_bias, name='beta_out')
         beta = tf.clip_by_value(beta, 0, 2, name='beta_clipping')
         beta = tf.nn.softplus(beta, name='beta_act')
@@ -148,9 +154,11 @@ class WeibullModel(object):
 
 class BinaryRankingModel(WeibullModel):
 
-    def __init__(self, input_shape, main_network, seed=7, alpha_reg=1e-3, cross_entropy_weight=1):
+    def __init__(self, input_shape, main_network, seed=7, alpha_reg=1e-3, cross_entropy_weight=1,
+                 alpha_bias_random_mean=0.0, alpha_random_stddev=1.0, beta_random_stddev=1.0):
         self.cross_entropy_weight = cross_entropy_weight
-        super().__init__(input_shape, main_network, seed, alpha_reg)
+        super().__init__(input_shape, main_network, seed, alpha_reg, alpha_bias_random_mean,
+                         alpha_random_stddev, beta_random_stddev)
 
     def calc_loss(self):
         main_loss = self.get_survival_loss()
@@ -162,12 +170,14 @@ class BinaryRankingModel(WeibullModel):
 
 class ContrastiveRankingModel(WeibullModel):
 
-    def __init__(self, input_shape, main_network, seed=7, alpha_reg=1e-3, contrastive_weight=1, margin_weight=1):
+    def __init__(self, input_shape, main_network, seed=7, alpha_reg=1e-3, contrastive_weight=1, margin_weight=1,
+                 alpha_bias_random_mean=0.0, alpha_random_stddev=1.0, beta_random_stddev=1.0):
         self.contrastive_weight = contrastive_weight
         self.margin_weight = margin_weight
         self.o1_transformed = None
         self.o2_transformed = None
-        super().__init__(input_shape, main_network, seed, alpha_reg)
+        super().__init__(input_shape, main_network, seed, alpha_reg, alpha_bias_random_mean,
+                         alpha_random_stddev, beta_random_stddev)
 
     def siamese_net(self, x):
         output, output_shape = self.main_network(input_tensor=x, seed=self.seed)
