@@ -1,8 +1,9 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from lifelines.utils import concordance_index
 from pycox.evaluation import EvalSurv
-import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
 
 
 def test_quality(t_true, y_true, pred,
@@ -125,3 +126,14 @@ def preprocess_kkbox(df):
     # final features
     x = np.hstack([gender_, city_, registered_via_values_, binary_, batchnorm_])
     return x, t, y
+
+
+def transform_kkbox(x_train, x_test, x_val):
+    cols_to_scale = [i  for i in range(33, 40)]
+    # fit scaler
+    st_sc = StandardScaler().fit(X=x_train[:, cols_to_scale])
+    # transform
+    x_train[:, cols_to_scale] = st_sc.transform(x_train[:, cols_to_scale])
+    x_test[:, cols_to_scale] = st_sc.transform(x_test[:, cols_to_scale])
+    x_val[:, cols_to_scale] = st_sc.transform(x_val[:, cols_to_scale])
+    return x_train, x_test, x_val
