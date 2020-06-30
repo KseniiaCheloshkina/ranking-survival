@@ -9,9 +9,13 @@ from models import metabric_main_network
 
 class WeibullModel(object):
 
-    def __init__(self, input_shape, main_network=metabric_main_network, seed=7, alpha_reg=1e-3):
+    def __init__(self, input_shape, main_network=metabric_main_network, seed=7, alpha_reg=1e-3,
+                 alpha_bias_random_mean=0.0, alpha_random_stddev=1.0, beta_random_stddev=1.0):
         self.alpha_reg = alpha_reg
         self.main_network = main_network
+        self.alpha_bias_random_mean = alpha_bias_random_mean
+        self.alpha_random_stddev = alpha_random_stddev
+        self.beta_random_stddev = beta_random_stddev
 
         self.seed = seed
         random.seed(self.seed)
@@ -42,15 +46,20 @@ class WeibullModel(object):
 
     def layer_weibull_parameters(self, input_t, input_shape):
         # alpha weibull parameter
-        alpha_weights = tf.Variable(tf.random.normal(shape=[input_shape[1], 1], seed=self.seed), name='alpha_weight')
-        alpha_bias = tf.Variable(tf.random.normal(shape=[1], seed=self.seed), name='alpha_bias')
+        alpha_weights = tf.Variable(tf.random.normal(shape=[input_shape[1], 1], seed=self.seed,
+                                                     stddev=self.alpha_random_stddev), name='alpha_weight')
+        alpha_bias = tf.Variable(tf.random.normal(shape=[1], stddev=self.alpha_random_stddev,
+                                                  mean=self.alpha_bias_random_mean, seed=self.seed),
+                                 name='alpha_bias')
         alpha = tf.add(tf.matmul(input_t, alpha_weights), alpha_bias, name='alpha_out')
         alpha = tf.clip_by_value(alpha, 0, 12, name='alpha_clipping')
         alpha = tf.exp(alpha, name='alpha_act')
         alpha = tf.reshape(alpha, (tf.shape(alpha)[0], 1), name='alpha_reshaped')
         # beta weibull parameter
-        beta_weights = tf.Variable(tf.random.normal(shape=[input_shape[1], 1], seed=self.seed), name='beta_weight')
-        beta_bias = tf.Variable(tf.random.normal(shape=[1], seed=self.seed), name='beta_bias')
+        beta_weights = tf.Variable(tf.random.normal(shape=[input_shape[1], 1], stddev=self.beta_random_stddev,
+                                                    seed=self.seed), name='beta_weight')
+        beta_bias = tf.Variable(tf.random.normal(shape=[1], stddev=self.beta_random_stddev, seed=self.seed),
+                                name='beta_bias')
         beta = tf.add(tf.matmul(input_t, beta_weights), beta_bias, name='beta_out')
         beta = tf.clip_by_value(beta, 0, 2, name='beta_clipping')
         beta = tf.nn.softplus(beta, name='beta_act')
@@ -76,11 +85,13 @@ class WeibullModel(object):
 
 class ContrastiveRankingModel(WeibullModel):
 
-    def __init__(self, input_shape, main_network, seed=7, alpha_reg=1e-3, contrastive_weight=1, margin_weight=1):
+    def __init__(self, input_shape, main_network, seed=7, alpha_reg=1e-3, contrastive_weight=1, margin_weight=1,
+                 alpha_bias_random_mean=0.0, alpha_random_stddev=1.0, beta_random_stddev=1.0):
         self.contrastive_weight = contrastive_weight
         self.margin_weight = margin_weight
         self.o1_transformed = None
-        super().__init__(input_shape, main_network, seed, alpha_reg)
+        super().__init__(input_shape, main_network, seed, alpha_reg, alpha_bias_random_mean,
+                         alpha_random_stddev, beta_random_stddev)
 
     def set_outputs(self):
         output, output_shape = self.main_network(input_tensor=self.x, seed=self.seed)
