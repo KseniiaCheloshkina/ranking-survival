@@ -98,8 +98,7 @@ class ContrastiveDataGenerator(object):
             x_batch - features of batch examples
             y_batch - [duration(t) of batch examples, duration(t) of batch examples, event label(y) of batch examples,
                 event label(y) of batch examples]
-            sample_weight - matrix of ones
-            target - array of time bin for each batch example
+            time_bin - array of time bin for each batch example
         """
         # indices of examples in a new batch
         all_anchors = np.array([], dtype=int)
@@ -122,7 +121,6 @@ class ContrastiveDataGenerator(object):
             self.t[all_anchors].reshape(all_anchors.shape[0], 1),
             self.y[all_anchors].reshape(all_anchors.shape[0], 1),
         ])
-        sample_weight = np.ones((all_anchors.shape[0], 1))
-        # save time bin of example in target
-        target = np.reshape(self.q[all_anchors], (all_anchors.shape[0], 1))
-        return x_batch, y_batch, sample_weight, target
+        # save time bin of example
+        time_bin = np.reshape(self.q[all_anchors], (all_anchors.shape[0], 1))
+        return x_batch, y_batch, time_bin
