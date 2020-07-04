@@ -73,6 +73,16 @@ def calc_batch_distances(v):
     return distances
 
 
+def get_delta_time_sample_weight(time_bin):
+    delta_time_bin = tf.subtract(tf.reshape(time_bin, (tf.shape(time_bin)[0], )), time_bin)
+    n_time_bins = tf.add(
+        tf.subtract(tf.reduce_max(time_bin), tf.reduce_min(time_bin)),
+        tf.constant(1, dtype=time_bin.dtype)
+    )
+    sample_weight = tf.add(tf.constant(1, dtype=tf.float32), tf.cast(tf.abs(delta_time_bin) / n_time_bins, tf.float32))
+    return delta_time_bin, sample_weight
+
+
 def batch_hard_sampling_contrastive_loss(output_tr, time_bin, t, y, margin_scale):
     # get labels
     pos_label = get_contrastive_positive_label(time_bin)
@@ -104,12 +114,7 @@ def batch_hard_sampling_contrastive_loss(output_tr, time_bin, t, y, margin_scale
     range_rows = tf.cast(tf.expand_dims(tf.range(tf.shape(ind_min)[0]), 1), tf.int64)
     ind_min = tf.concat([range_rows, ind_min], axis=1)
     # introduce margin
-    delta_time_bin = tf.abs(tf.subtract(tf.reshape(time_bin, (tf.shape(time_bin)[0], )), time_bin))
-    n_time_bins = tf.add(
-        tf.subtract(tf.reduce_max(time_bin), tf.reduce_min(time_bin)),
-        tf.constant(1, dtype=tf.float32)
-    )
-    sample_weight = tf.cast(tf.add(tf.constant(1, dtype=tf.float32), delta_time_bin / n_time_bins), tf.float32)
+    _, sample_weight = get_delta_time_sample_weight(time_bin)
     sample_weight = margin_scale * sample_weight
     sample_weight = tf.gather_nd(sample_weight, ind_min)
     hardest_negative_dist_margin = tf.math.maximum(
@@ -130,3 +135,57 @@ def batch_hard_sampling_contrastive_loss(output_tr, time_bin, t, y, margin_scale
     loss = tf.concat([hardest_positive_dist, hardest_negative_dist_margin], axis=0)
     mean_loss = tf.reduce_mean(loss)
     return hardest_positive_dist, hardest_negative_dist_margin, mean_loss
+
+
+def batch_hard_sampling_cross_entropy_loss(output_tr, time_bin, t, y):
+    # get labels
+    delta_time_bin, sample_weight = get_delta_time_sample_weight(time_bin)
+    # assert pairs are comparable in terms of concordance
+    comparability_m = get_valid_pairs_tf(t, y)
+    pos_label = get_cross_entropy_positive_label(delta_time_bin)
+    neg_label = get_cross_entropy_negative_label(delta_time_bin)
+    pos_label = tf.to_float(tf.multiply(comparability_m, pos_label))
+    neg_label = tf.to_float(tf.multiply(comparability_m, neg_label))
+    # get survival value prediction
+    surv = calc_survival_value(output_tr[:, 0], output_tr[:, 1], t)
+    surv = tf.reshape(surv, (tf.shape(surv)[0], 1))
+    delta_surv = tf.subtract(tf.reshape(surv, (1, tf.shape(surv)[0])), surv)
+    # hardest positive examples
+    hardest_positive = tf.multiply(pos_label, tf.multiply(delta_surv, sample_weight))
+    mask_less_zero = tf.cast(tf.less(hardest_positive, tf.constant(0, dtype=hardest_positive.dtype)),
+                             dtype=hardest_positive.dtype)
+    hardest_positive = tf.multiply(hardest_positive, mask_less_zero)
+    hardest_positive = tf.reduce_min(hardest_positive, axis=1, keepdims=False)
+    # proba
+    hardest_pos_sigm = tf.nn.sigmoid(hardest_positive)
+    hardest_pos_sigm = tf.clip_by_value(hardest_pos_sigm, 1e-6, 1 - 1e-6)
+    # log loss
+    loss_pos = tf.log(hardest_pos_sigm + 1e-6)
+
+    # hardest negative examples
+    hardest_negative = tf.multiply(neg_label, tf.multiply(delta_surv, sample_weight))
+    mask_greater_zero = tf.cast(tf.greater(hardest_negative, tf.constant(0, dtype=hardest_negative.dtype)),
+                                dtype=hardest_negative.dtype)
+    hardest_negative = tf.multiply(hardest_negative, mask_greater_zero)
+    hardest_negative = tf.reduce_max(hardest_negative, axis=1, keepdims=False)
+    # proba
+    hardest_neg_sigm = tf.nn.sigmoid(hardest_negative)
+    hardest_neg_sigm = tf.clip_by_value(hardest_neg_sigm, 1e-6, 1 - 1e-6)
+    # log loss
+    loss_neg = tf.log(1 + 1e-6 - hardest_neg_sigm)
+    # final loss
+    loss = tf.concat([loss_neg, loss_pos], axis=0)
+    mean_loss = -1 * tf.reduce_mean(loss)
+    return hardest_pos_sigm, hardest_neg_sigm, mean_loss
+
+
+def get_cross_entropy_positive_label(delta_time_bin):
+    # for comparable in terms of concordance pairs the greater the time, the higher the survival
+    pos_label = tf.cast(tf.greater(delta_time_bin, tf.constant(0, dtype=delta_time_bin.dtype)), dtype=tf.int8)
+    return pos_label
+
+
+def get_cross_entropy_negative_label(delta_time_bin):
+    # for comparable in terms of concordance pairs the lower the time, the lower the survival
+    neg_label = tf.cast(tf.less(delta_time_bin, tf.constant(0, dtype=delta_time_bin.dtype)), dtype=tf.int8)
+    return neg_label

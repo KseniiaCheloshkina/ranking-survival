@@ -77,10 +77,10 @@ class WeibullModel(object):
         self.alphas = tf.reshape(self.o1[:, 0], sh, name='alpha_reshaped_loss')
         self.betas = tf.reshape(self.o1[:, 1], sh, name='beta_reshaped_loss')
         # weibull log likelihood for first sample
-        self.mean_lh = losses.weibull_loglikelyhood_loss(self.t, self.y, self.alphas, self.betas)
+        mean_lh = losses.weibull_loglikelyhood_loss(self.t, self.y, self.alphas, self.betas)
         # alpha regularizer
-        self.mean_sq_alpha = tf.reduce_mean(self.alphas)
-        return self.mean_lh + self.alpha_reg * self.mean_sq_alpha
+        mean_sq_alpha = tf.reduce_mean(self.alphas)
+        return mean_lh + self.alpha_reg * mean_sq_alpha
 
 
 class ContrastiveRankingModel(WeibullModel):
@@ -90,6 +90,7 @@ class ContrastiveRankingModel(WeibullModel):
         self.contrastive_weight = contrastive_weight
         self.margin_weight = margin_weight
         self.o1_transformed = None
+        self.main_loss = None
         super().__init__(input_shape, main_network, seed, alpha_reg, alpha_bias_random_mean,
                          alpha_random_stddev, beta_random_stddev)
 
@@ -105,3 +106,19 @@ class ContrastiveRankingModel(WeibullModel):
         hardest_pos_dist, hardest_neg_dist_margin, mean_contr_loss = losses.batch_hard_sampling_contrastive_loss(
             self.o1_transformed, self.target, self.t, self.y, self.margin_weight)
         return tf.add(self.main_loss, self.contrastive_weight * mean_contr_loss, name='sum_losses')
+
+
+class BinaryRankingModel(WeibullModel):
+
+    def __init__(self, input_shape, main_network, seed=7, alpha_reg=1e-3, cross_entropy_weight=1,
+                 alpha_bias_random_mean=0.0, alpha_random_stddev=1.0, beta_random_stddev=1.0):
+        self.cross_entropy_weight = cross_entropy_weight
+        self.main_loss = None
+        super().__init__(input_shape, main_network, seed, alpha_reg, alpha_bias_random_mean,
+                         alpha_random_stddev, beta_random_stddev)
+
+    def calc_loss(self):
+        self.main_loss = self.get_survival_loss()
+        hardest_pos, hardest_neg, mean_ce_loss = losses.batch_hard_sampling_cross_entropy_loss(
+            self.o1, self.target, self.t, self.y)
+        return tf.add(self.main_loss, self.cross_entropy_weight * mean_ce_loss, name='sum_losses')

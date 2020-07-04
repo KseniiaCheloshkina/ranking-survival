@@ -146,9 +146,6 @@ class WeibullModel(object):
         # alpha regularizer
         all_alphas = tf.add(self.alphas_a, self.alphas_b, name='survival_loss_alpha_beta_sum')
         mean_sq_alpha = tf.reduce_mean(all_alphas)
-        self.mean_sq_alpha = mean_sq_alpha
-        self.mean_lh_a = mean_lh_a
-        self.mean_lh_b = mean_lh_b
         return mean_lh_b + mean_lh_a + self.alpha_reg * mean_sq_alpha
 
 
@@ -157,15 +154,16 @@ class BinaryRankingModel(WeibullModel):
     def __init__(self, input_shape, main_network, seed=7, alpha_reg=1e-3, cross_entropy_weight=1,
                  alpha_bias_random_mean=0.0, alpha_random_stddev=1.0, beta_random_stddev=1.0):
         self.cross_entropy_weight = cross_entropy_weight
+        self.main_loss = None
         super().__init__(input_shape, main_network, seed, alpha_reg, alpha_bias_random_mean,
                          alpha_random_stddev, beta_random_stddev)
 
     def calc_loss(self):
-        main_loss = self.get_survival_loss()
+        self.main_loss = self.get_survival_loss()
         # binary cross-entropy
         mean_ll = losses.binary_cross_entropy_loss(self.t_a, self.t_b, self.alphas_a, self.betas_a,
                                                    self.alphas_b, self.betas_b, self.target, self.sample_weight)
-        return main_loss + self.cross_entropy_weight * mean_ll
+        return self.main_loss + self.cross_entropy_weight * mean_ll
 
 
 class ContrastiveRankingModel(WeibullModel):
@@ -176,6 +174,7 @@ class ContrastiveRankingModel(WeibullModel):
         self.margin_weight = margin_weight
         self.o1_transformed = None
         self.o2_transformed = None
+        self.main_loss = None
         super().__init__(input_shape, main_network, seed, alpha_reg, alpha_bias_random_mean,
                          alpha_random_stddev, beta_random_stddev)
 
