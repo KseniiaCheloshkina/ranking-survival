@@ -77,8 +77,8 @@ def test_losses_hard_mining():
 
     hardest_pos_sigm, hardest_neg_sigm, mean_loss = batch_hard_sampling_cross_entropy_loss(
         output_tr=tf.maximum(x_batch, 1e-3), time_bin=target,
-        t=y_batch[:, 0].reshape(y_batch.shape[0], ),
-        y=y_batch[:, 1].reshape(y_batch.shape[0], )
+        t=y_batch[:, 0].reshape(y_batch.shape[0], 1),
+        y=y_batch[:, 1].reshape(y_batch.shape[0], 1)
     )
 
     with tf.compat.v1.Session() as sess:
@@ -89,7 +89,7 @@ def test_losses_hard_mining():
         hardest_neg_sigm_ = sess.run(hardest_neg_sigm)
         assert np.all(hardest_neg_sigm_ >= 0.5)
         loss_ = sess.run(mean_loss)
-        assert round(loss_ * 100) == 83
+        assert round(loss_ * 100) == 79.0
 
 
 if __name__ == "__main__":

@@ -138,6 +138,9 @@ def batch_hard_sampling_contrastive_loss(output_tr, time_bin, t, y, margin_scale
 
 
 def batch_hard_sampling_cross_entropy_loss(output_tr, time_bin, t, y):
+    sh = tf.shape(t)
+    alphas = tf.reshape(output_tr[:, 0], sh)
+    betas = tf.reshape(output_tr[:, 1], sh)
     # get labels
     delta_time_bin, sample_weight = get_delta_time_sample_weight(time_bin)
     # assert pairs are comparable in terms of concordance
@@ -147,8 +150,7 @@ def batch_hard_sampling_cross_entropy_loss(output_tr, time_bin, t, y):
     pos_label = tf.to_float(tf.multiply(comparability_m, pos_label))
     neg_label = tf.to_float(tf.multiply(comparability_m, neg_label))
     # get survival value prediction
-    surv = calc_survival_value(output_tr[:, 0], output_tr[:, 1], t)
-    surv = tf.reshape(surv, (tf.shape(surv)[0], 1))
+    surv = calc_survival_value(alphas, betas, t)
     delta_surv = tf.subtract(tf.reshape(surv, (1, tf.shape(surv)[0])), surv)
     # hardest positive examples
     hardest_positive = tf.multiply(pos_label, tf.multiply(delta_surv, sample_weight))
