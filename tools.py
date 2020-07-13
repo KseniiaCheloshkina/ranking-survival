@@ -16,13 +16,6 @@ def test_quality(t_true, y_true, pred,
         all_surv_time = pd.concat([all_surv_time, pd.DataFrame(surv_prob).T])
     all_surv_time.index = time_grid
 
-    if concordance_at_t is None:
-        concordance_at_t = np.mean(time_grid)
-    harell_c_index = concordance_index(
-        predicted_scores=all_surv_time.loc[concordance_at_t, :].values,
-        event_times=t_true,
-        event_observed=y_true)
-
     ev = EvalSurv(surv=all_surv_time, durations=t_true, events=y_true,
                   censor_surv='km')
     dt_c_index = ev.concordance_td('antolini')
@@ -46,15 +39,29 @@ def test_quality(t_true, y_true, pred,
         ax[2].set_title('Brier score')
         ax[2].set_xlabel('Time')
         plt.show();
-
-    return pd.DataFrame([
-        {
-            'harell_c_index': harell_c_index,
-            'dt_c_index': dt_c_index,
-            'int_brier_score': int_brier_score,
-            'int_nbill': int_nbill
-        }
-    ])
+        
+    if concordance_at_t is not None:
+        harell_c_index = concordance_index(
+            predicted_scores=all_surv_time.loc[concordance_at_t, :].values,
+            event_times=t_true,
+            event_observed=y_true)
+        
+        return pd.DataFrame([
+            {
+                'harell_c_index': harell_c_index,
+                'dt_c_index': dt_c_index,
+                'int_brier_score': int_brier_score,
+                'int_nbill': int_nbill
+            }
+        ])
+    else:
+        return pd.DataFrame([
+            {
+                'dt_c_index': dt_c_index,
+                'int_brier_score': int_brier_score,
+                'int_nbill': int_nbill
+            }
+        ])
 
 
 def preprocess_kkbox(df):

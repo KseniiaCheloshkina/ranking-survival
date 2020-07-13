@@ -58,7 +58,7 @@ def get_valid_pairs_tf(t, y):
     return comparability_m
 
 
-class ContrastiveDataGenerator(object):
+class DataGenerator(object):
     """" Generates pairs
     The target is defined for pairs comparable in terms of Harell's C-index
     The samples in a batch are taken uniformly from event time distribution

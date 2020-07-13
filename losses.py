@@ -150,7 +150,7 @@ def batch_hard_sampling_cross_entropy_loss(output_tr, time_bin, t, y):
     pos_label = tf.to_float(tf.multiply(comparability_m, pos_label))
     neg_label = tf.to_float(tf.multiply(comparability_m, neg_label))
     # get survival value prediction
-    surv = calc_survival_value(alphas, betas, t)
+    surv = tf.cast(calc_survival_value(alphas, betas, t), dtype=tf.float32)
     delta_surv = tf.subtract(tf.reshape(surv, (1, tf.shape(surv)[0])), surv)
     # hardest positive examples
     hardest_positive = tf.multiply(pos_label, tf.multiply(delta_surv, sample_weight))
