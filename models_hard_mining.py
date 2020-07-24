@@ -38,6 +38,7 @@ class WeibullModel(object):
         self.set_outputs()
         self.alphas = None
         self.betas = None
+        self.main_loss = None
         self.loss = self.calc_loss()
 
     def set_outputs(self):
@@ -69,7 +70,8 @@ class WeibullModel(object):
         return output
 
     def calc_loss(self):
-        return self.get_survival_loss()
+        self.main_loss = self.get_survival_loss()
+        return self.main_loss
 
     def get_survival_loss(self):
         # calculate weibull log likelihood
@@ -90,7 +92,7 @@ class ContrastiveRankingModel(WeibullModel):
         self.contrastive_weight = contrastive_weight
         self.margin_weight = margin_weight
         self.o1_transformed = None
-        self.main_loss = None
+        self.additional_loss = None
         super().__init__(input_shape, main_network, seed, alpha_reg, alpha_bias_random_mean,
                          alpha_random_stddev, beta_random_stddev)
 
@@ -105,7 +107,8 @@ class ContrastiveRankingModel(WeibullModel):
         self.main_loss = self.get_survival_loss()
         hardest_pos_dist, hardest_neg_dist_margin, mean_contr_loss = losses.batch_hard_sampling_contrastive_loss(
             self.o1_transformed, self.target, self.t, self.y, self.margin_weight)
-        return tf.add(self.main_loss, self.contrastive_weight * mean_contr_loss, name='sum_losses')
+        self.additional_loss = self.contrastive_weight * mean_contr_loss
+        return tf.add(self.main_loss, self.additional_loss, name='sum_losses')
 
 
 class BinaryRankingModel(WeibullModel):
@@ -113,7 +116,7 @@ class BinaryRankingModel(WeibullModel):
     def __init__(self, input_shape, main_network, seed=7, alpha_reg=1e-3, cross_entropy_weight=1,
                  alpha_bias_random_mean=0.0, alpha_random_stddev=1.0, beta_random_stddev=1.0):
         self.cross_entropy_weight = cross_entropy_weight
-        self.main_loss = None
+        self.additional_loss = None
         super().__init__(input_shape, main_network, seed, alpha_reg, alpha_bias_random_mean,
                          alpha_random_stddev, beta_random_stddev)
 
@@ -121,4 +124,5 @@ class BinaryRankingModel(WeibullModel):
         self.main_loss = self.get_survival_loss()
         hardest_pos, hardest_neg, mean_ce_loss = losses.batch_hard_sampling_cross_entropy_loss(
             self.o1, self.target, self.t, self.y)
-        return tf.add(self.main_loss, self.cross_entropy_weight * mean_ce_loss, name='sum_losses')
+        self.additional_loss = self.cross_entropy_weight * mean_ce_loss
+        return tf.add(self.main_loss, self.additional_loss, name='sum_losses')
