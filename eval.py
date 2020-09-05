@@ -3,6 +3,7 @@ import copy
 import pickle
 import pandas as pd
 import json
+from tabulate import tabulate
 
 import train
 from tools import test_quality
@@ -109,4 +110,4 @@ if __name__ == "__main__":
     df_metabric['dataset'] = 'METABRIC'
 
     df_final = pd.concat([df_metabric, df_kkbox])
-    # TODO: print(tabulate(df_final))
+    print(tabulate(df_final))

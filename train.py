@@ -7,6 +7,7 @@ import json
 import pickle
 import tqdm
 import pandas as pd
+from tabulate import tabulate
 
 import models_hard_mining
 from batch_generators_hard_mining import DataGenerator
@@ -30,7 +31,7 @@ def main(args):
         val_data = pickle.load(f)
 
     # load custom bottom layers
-    eval('from custom_models import ' + args['custom_bottom_function_name'] + 'as custom_bottom')
+    exec('from custom_models import ' + args['custom_bottom_function_name'] + ' as custom_bottom')
 
     # set seed for reproducibility
     if 'seed' in config.keys():
@@ -54,7 +55,7 @@ def main(args):
     # initialize model
     if args['verbose'] == 1:
         print("Initialize model...")
-    data_gen, model = initialize_model(train_data, config, seed)
+    data_gen, model = initialize_model(args['model_type'], train_data, config, custom_bottom, seed)
     # train model
     if args['verbose'] == 1:
         print("Train model...")
@@ -62,7 +63,7 @@ def main(args):
         args, train_data, val_data, config, data_gen, model, seed)
     if args['verbose'] == 1:
         df_losses = pd.DataFrame(data=[hist_losses_train, hist_losses_val], columns=['train_loss', 'val_Loss'])
-        # TODO: print(tabulate(df_losses))
+        print(tabulate(df_losses))
     # save prediction
     if args['save_prediction']:
         if args['verbose'] == 1:
@@ -73,19 +74,19 @@ def main(args):
             pickle.dump(pred_train, f)
 
 
-def initialize_model(train_data, config, seed):
+def initialize_model(model_type, train_data, config, custom_bottom, seed):
     """ Initialize batch generator and model from config """
 
     inp_shape = (None, train_data['x'].shape[1])
     # initialize batch generator
-    dg = DataGenerator(
-        x=train_data['x'],
-        y=train_data['y'],
-        t=train_data['t'],
-        n_ex_bin=config['n_ex_bin'],
-        n_time_bins=config['n_time_bins'])
+    dg = DataGenerator(x=train_data['x'],
+                       y=train_data['y'],
+                       t=train_data['t'],
+                       n_ex_bin=config['n_ex_bin'],
+                       n_time_bins=config['n_time_bins']
+                       )
     # initialize model
-    if args['model_type'] == 'binary':
+    if model_type == 'binary':
         model = models_hard_mining.BinaryRankingModel(
             input_shape=inp_shape,
             seed=seed,
@@ -96,7 +97,7 @@ def initialize_model(train_data, config, seed):
             beta_random_stddev=config['beta_random_stddev'],
             cross_entropy_weight=config['cross_entropy_weight']
         )
-    elif args['model_type'] == 'base':
+    elif model_type == 'base':
         model = models_hard_mining.WeibullModel(
             input_shape=inp_shape,
             seed=seed,
@@ -106,7 +107,7 @@ def initialize_model(train_data, config, seed):
             alpha_random_stddev=config['alpha_random_stddev'],
             beta_random_stddev=config['beta_random_stddev'],
         )
-    elif args['model_type'] == 'contrastive':
+    elif model_type == 'contrastive':
         model = models_hard_mining.ContrastiveRankingModel(
             input_shape=inp_shape,
             seed=seed,
@@ -124,26 +125,41 @@ def initialize_model(train_data, config, seed):
     return dg, model
 
 
-def initialize_sgd_optimizer(config, model):
+def initialize_optimizer(config, model, optimize_only_main_loss=False, var_list=None, params_ends='',
+                         opt_type='sgd'):
     """ Define GradientDescentOptimizer from config """
 
     global_step = tf.Variable(0, trainable=False)
     # if exponential decay of learning rate is specified in config
-    if ('step_rate' not in config.keys()) or (config['step_rate'] == 0) or (
-            'decay' not in config.keys()) or (config['decay'] == 1):
-        learning_rate = config['learning_rate']
+    if ('step_rate' + params_ends not in config.keys()) or (config['step_rate' + params_ends] == 0) or (
+            'decay' + params_ends not in config.keys()) or (config['decay' + params_ends] == 1):
+        learning_rate = config['learning_rate' + params_ends]
     else:
         learning_rate = tf.train.exponential_decay(
-            config['learning_rate'], global_step, config['step_rate'], config['decay'], staircase=True)
-    optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
-    train_op = optimizer.minimize(model.loss)
-    return train_op, global_step
+            config['learning_rate' + params_ends], global_step, config['step_rate' + params_ends],
+            config['decay' + params_ends], staircase=True)
+    if var_list is None:
+        var_list = tf.global_variables()
+    if opt_type == 'sgd':
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+    elif opt_type == 'momentum':
+        optimizer = tf.train.MomentumOptimizer(learning_rate=learning_rate, momentum=config['momentum' + params_ends])
+    elif opt_type == 'adam':
+        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+    else:
+        raise Exception("opt_type {} is not implemented".format(opt_type))
+
+    if optimize_only_main_loss:
+        train_op = optimizer.minimize(model.main_loss, var_list=var_list)
+    else:
+        train_op = optimizer.minimize(model.loss, var_list=var_list)
+
+    return train_op, global_step, optimizer
 
 
-def train(args, train_data, val_data, config, data_gen, model, seed):
+def train(args, train_data, config, data_gen, model, seed, val_data=None):
     # determine optimizer
-    train_op, global_step = initialize_sgd_optimizer(config, model)
-    # TODO: increment_global_step is not needed???
+    train_op, global_step, optimizer = initialize_optimizer(config, model)
     increment_global_step = tf.assign(global_step, global_step + 1)
     # lists to store results
     hist_losses_train = []
@@ -161,7 +177,7 @@ def train(args, train_data, val_data, config, data_gen, model, seed):
             while True:
                 try:
                     # get batch data
-                    x_batch, y_batch, target = next(gen)
+                    x_batch, y_batch, target, _ = next(gen)
                     feed_dict = {
                         model.x: x_batch,
                         model.t: y_batch[:, 0].reshape((y_batch[:, 0].shape[0], 1)),
@@ -173,21 +189,23 @@ def train(args, train_data, val_data, config, data_gen, model, seed):
                 except StopIteration:
                     # if run out of examples
                     break
-
-            # get prediction for validation data
-            pred_val = sess.run(model.o1, feed_dict={model.x: val_data['x']})
-            all_pred_val.append(pred_val)
-            # get loss for validation data
-            val_loss = get_loss_batch(val_data, config, sess, model.loss)
-            hist_losses_val.append(val_loss)
-            if args['verbose'] == 1:
-                print("Val loss at epoch {}: {}".format(i, val_loss))
+            if val_data is not None:
+                # get prediction for validation data
+                pred_val = sess.run(model.o1, feed_dict={model.x: val_data['x']})
+                all_pred_val.append(pred_val)
+                # get loss for validation data
+                val_loss = get_loss_batch(val_data, config, sess, model.loss)[0]
+                hist_losses_val.append(val_loss)
+                if args['verbose'] == 1:
+                    print("Val loss at epoch {}: {}".format(i, val_loss))
+                
             # get prediction for training data
             pred_train = sess.run(model.o1, feed_dict={model.x: train_data['x']})
             all_pred_train.append(pred_train)
             # get loss for training data
-            train_loss = get_loss_batch(train_data, config, sess, model.loss)
+            train_loss = get_loss_batch(train_data, config, sess, model.loss)[0]
             hist_losses_train.append(train_loss)
+            sess.run(increment_global_step)
         # save model
         if args['verbose'] == 1:
             print("Save model...")
@@ -205,18 +223,22 @@ def get_loss_batch(data, config, sess, tensor_loss):
                        n_ex_bin=config['n_ex_bin'],
                        n_time_bins=config['n_time_bins'])
     gen = dg.get_batch()
-    loss = 0
+    losses = []
     while True:
         try:
-            x_batch, y_batch, target = next(gen)
-            loss =+ sess.run(tensor_loss, feed_dict={
+            x_batch, y_batch, target, _ = next(gen)
+            increm = sess.run(tensor_loss, feed_dict={
                 "x:0": x_batch,
                 "t:0": y_batch[:, 0].reshape((y_batch[:, 0].shape[0], 1)),
                 "y:0": y_batch[:, 1].reshape((y_batch[:, 0].shape[0], 1)),
                 "target:0": target.reshape((y_batch[:, 0].shape[0], 1))
             })
+            losses.append(increm)
         except StopIteration:
-            return loss
+            tensor_vals = np.mean(np.array(losses), axis=0)
+            if tensor_vals.shape == ():
+                return np.array([tensor_vals])
+            return tensor_vals
 
 
 def check_config(args, train_data, config):
@@ -292,8 +314,8 @@ if __name__ == "__main__":
                         default=False, help='Whether to save model to `save_path`_model.pkl')
     parser.add_argument('--save_prediction', required=False, type=bool, choices=[True, False],
                         default=False, help='Whether to save predictions to `save_path`_pred.pkl')
-    args = vars(parser.parse_args())
+    arguments = vars(parser.parse_args())
     print("Arguments: ")
-    print(args)
-    main(args)
+    print(arguments)
+    main(arguments)
     # TODO: before testing save preprocessed datasets

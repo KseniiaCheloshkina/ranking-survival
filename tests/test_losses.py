@@ -1,9 +1,11 @@
 import pickle
+import sys
 
 import numpy as np
 import tensorflow as tf
 
-from batch_generators_hard_mining import get_valid_pairs_tf, ContrastiveDataGenerator
+sys.path.append(".")
+from batch_generators_hard_mining import get_valid_pairs_tf, DataGenerator
 from losses import get_contrastive_positive_label, calc_batch_distances, batch_hard_sampling_contrastive_loss, \
     get_contrastive_negative_label, batch_hard_sampling_cross_entropy_loss, get_delta_time_sample_weight
 
@@ -11,7 +13,7 @@ from losses import get_contrastive_positive_label, calc_batch_distances, batch_h
 def test_losses_hard_mining():
     np.random.seed(1)
     # load metabric
-    with open('../data/metabric.pkl', 'rb') as f:
+    with open('data/metabric.pkl', 'rb') as f:
         [
             (_, _),
             (_, _),
@@ -28,9 +30,9 @@ def test_losses_hard_mining():
     # get batch generator
     n_ex_bin = 3
     n_time_bins = 10
-    dg = ContrastiveDataGenerator(x=x_val, t=t_val, y=y_val, n_time_bins=n_time_bins, n_ex_bin=n_ex_bin)
+    dg = DataGenerator(x=x_val, t=t_val, y=y_val, n_time_bins=n_time_bins, n_ex_bin=n_ex_bin)
     batch_generator = dg.get_batch()
-    x_batch, y_batch, target = next(batch_generator)
+    x_batch, y_batch, target, _ = next(batch_generator)
 
     # calculate comparability
     comparability_tf = get_valid_pairs_tf(

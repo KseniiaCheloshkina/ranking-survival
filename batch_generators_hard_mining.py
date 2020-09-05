@@ -123,4 +123,4 @@ class DataGenerator(object):
         ])
         # save time bin of example
         time_bin = np.reshape(self.q[all_anchors], (all_anchors.shape[0], 1))
-        return x_batch, y_batch, time_bin
+        return x_batch, y_batch, time_bin, all_anchors
