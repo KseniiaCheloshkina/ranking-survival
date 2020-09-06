@@ -56,13 +56,28 @@ def main(args):
     if args['verbose'] == 1:
         print("Initialize model...")
     data_gen, model = initialize_model(args['model_type'], train_data, config, custom_bottom, seed)
+
     # train model
     if args['verbose'] == 1:
         print("Train model...")
-    hist_losses_train, hist_losses_val, pred_train, pred_val = train(
-        args, train_data, val_data, config, data_gen, model, seed)
+
+    if args['model_type'] in ["base", "binary"]:
+        train_output = train(
+            args=args, train_data=train_data, val_data=val_data, config=config,
+            data_gen=data_gen, model=model, seed=seed)
+    elif args['model_type'] == "contrastive":
+        train_output = train_sequential(
+            args=args, train_data=train_data, val_data=val_data, config=config,
+            data_gen=data_gen, model=model, seed=seed, optimizers=('sgd', 'adam', 'adam'))
+    else:
+        raise Exception("{} model type is not implemented".format(args['model_type']))
+    (hist_loss_train, hist_loss_main_train, hist_loss_val, hist_loss_main_val, pred_train, pred_val) = train_output
+
     if args['verbose'] == 1:
-        df_losses = pd.DataFrame(data=[hist_losses_train, hist_losses_val], columns=['train_loss', 'val_Loss'])
+        df_losses = pd.DataFrame(
+            data=[hist_loss_train, hist_loss_main_train, hist_loss_val, hist_loss_main_val],
+            columns=['train_loss', 'train_main_loss', 'val_loss', 'val_main_loss']
+        )
         print(tabulate(df_losses))
     # save prediction
     if args['save_prediction']:
@@ -157,13 +172,15 @@ def initialize_optimizer(config, model, optimize_only_main_loss=False, var_list=
     return train_op, global_step, optimizer
 
 
-def train(args, train_data, config, data_gen, model, seed, val_data=None):
+def train(args, train_data, config, data_gen, model, seed, optimizer='sgd', val_data=None):
     # determine optimizer
-    train_op, global_step, optimizer = initialize_optimizer(config, model)
+    train_op, global_step, optimizer = initialize_optimizer(config=config, model=model, opt_type=optimizer)
     increment_global_step = tf.assign(global_step, global_step + 1)
     # lists to store results
     hist_losses_train = []
     hist_losses_val = []
+    hist_losses_main_train = []
+    hist_losses_main_val = []
     all_pred_train = []
     all_pred_val = []
     with tf.Session() as sess:
@@ -194,17 +211,20 @@ def train(args, train_data, config, data_gen, model, seed, val_data=None):
                 pred_val = sess.run(model.o1, feed_dict={model.x: val_data['x']})
                 all_pred_val.append(pred_val)
                 # get loss for validation data
-                val_loss = get_loss_batch(val_data, config, sess, model.loss)[0]
-                hist_losses_val.append(val_loss)
+                val_loss = get_loss_batch(val_data, config, sess, [model.main_loss, model.loss])
+                hist_losses_main_val.append(val_loss[0])
+                hist_losses_val.append(val_loss[1])
+
                 if args['verbose'] == 1:
                     print("Val loss at epoch {}: {}".format(i, val_loss))
-                
+
             # get prediction for training data
             pred_train = sess.run(model.o1, feed_dict={model.x: train_data['x']})
             all_pred_train.append(pred_train)
             # get loss for training data
-            train_loss = get_loss_batch(train_data, config, sess, model.loss)[0]
-            hist_losses_train.append(train_loss)
+            train_loss = get_loss_batch(train_data, config, sess, [model.main_loss, model.loss])
+            hist_losses_main_train.append(train_loss[0])
+            hist_losses_train.append(train_loss[1])
             sess.run(increment_global_step)
         # save model
         if args['verbose'] == 1:
@@ -212,7 +232,11 @@ def train(args, train_data, config, data_gen, model, seed, val_data=None):
         saver = tf.train.Saver()
         if args['save_model']:
             saver.save(sess, args['save_path'] + args["model_type"] + "_model")
-    return hist_losses_train, hist_losses_val, all_pred_train, all_pred_val
+    return (
+        hist_losses_train, hist_losses_main_train,
+        hist_losses_val, hist_losses_main_val,
+        all_pred_train, all_pred_val
+    )
 
 
 def get_loss_batch(data, config, sess, tensor_loss):
@@ -239,6 +263,144 @@ def get_loss_batch(data, config, sess, tensor_loss):
             if tensor_vals.shape == ():
                 return np.array([tensor_vals])
             return tensor_vals
+
+
+def run_step(sess, config, args, data_gen, model, global_step, train_op, n_epochs, train_data, val_data=None):
+    increment_global_step = tf.assign(global_step, global_step + 1)
+    hist_losses_train = []
+    hist_losses_val = []
+    hist_losses_main_train = []
+    hist_losses_main_val = []
+    all_pred_train = []
+    all_pred_val = []
+    # for each epoch
+    for i in tqdm.tqdm(range(n_epochs)):
+        # initialize generator
+        gen = data_gen.get_batch()
+        while True:
+            try:
+                # get batch data
+                x_batch, y_batch, target, _ = next(gen)
+                feed_dict = {
+                    model.x: x_batch,
+                    model.t: y_batch[:, 0].reshape((y_batch[:, 0].shape[0], 1)),
+                    model.y: y_batch[:, 1].reshape((y_batch[:, 0].shape[0], 1)),
+                    model.target: target.reshape((y_batch[:, 0].shape[0], 1)),
+                }
+                # train model on batch
+                _, train_batch_loss_main, train_batch_loss = sess.run([train_op, model.main_loss, model.loss],
+                                                                      feed_dict=feed_dict)
+            except StopIteration:
+                # if run out of examples
+                break
+        if val_data is not None:
+            # get prediction for validation data
+            pred_val = sess.run(model.o1, feed_dict={model.x: val_data['x']})
+            all_pred_val.append(pred_val)
+
+            # get loss for validation data
+            val_loss = get_loss_batch(val_data, config, sess, [model.main_loss, model.loss])
+            hist_losses_main_val.append(val_loss[0])
+            hist_losses_val.append(val_loss[1])
+
+            if args['verbose'] == 1:
+                print("Val loss at epoch {}: {}".format(i, val_loss))
+
+        # get prediction for training data
+        pred_train = sess.run(model.o1, feed_dict={model.x: train_data['x']})
+        all_pred_train.append(pred_train)
+
+        # get loss for training data
+        train_loss = get_loss_batch(train_data, config, sess, [model.main_loss, model.loss])
+        hist_losses_main_train.append(train_loss[0])
+        hist_losses_train.append(train_loss[1])
+
+        # increase global step for optimizers
+        sess.run(increment_global_step)
+
+    return (
+        all_pred_train, hist_losses_main_train, hist_losses_train,
+        all_pred_val, hist_losses_main_val, hist_losses_val
+    )
+
+
+def train_sequential(args, train_data, config, data_gen, model, seed, val_data=None, optimizers=('sgd', 'sgd', 'sgd')):
+    # get trainable vars for each step
+    trainable_binary = [var for var in tf.global_variables() if 'transform' not in var.name]
+    trainable_contr = [var for var in tf.global_variables() if 'transform' in var.name]
+    trainable_contr_binary = tf.global_variables()
+
+    # determine optimizers for each step
+    train_op_w, global_step_w, optimizer_w = initialize_optimizer(
+        config, model, optimize_only_main_loss=True, var_list=trainable_binary, opt_type=optimizers[0])
+    train_op_c, global_step_c, optimizer_c = initialize_optimizer(
+        config, model, optimize_only_main_loss=False, var_list=trainable_contr, params_ends='_contr',
+        opt_type=optimizers[1])
+    train_op_w_c, global_step_w_c, optimizer_w_c = initialize_optimizer(
+        config, model, optimize_only_main_loss=False, var_list=trainable_contr_binary, params_ends='_both',
+        opt_type=optimizers[2])
+
+    # lists to store results
+    hist_losses_train = []
+    hist_losses_val = []
+    hist_losses_main_train = []
+    hist_losses_main_val = []
+    all_pred_train = []
+    all_pred_val = []
+
+    with tf.Session() as sess:
+        tf.set_random_seed(seed)
+        init = tf.initialize_all_variables()
+        sess.run(init)
+
+        # optimize main loss (weibull log likelyhood)
+        (step_all_pred_train, step_hist_losses_main_train, step_hist_losses_train, step_all_pred_val,
+         step_hist_losses_main_val, step_hist_losses_val) = run_step(
+            sess, config, args, data_gen, model, global_step_w, train_op_w, config['n_epochs'], train_data,
+            val_data=val_data)
+        hist_losses_train.extend(step_hist_losses_train)
+        hist_losses_val.extend(step_hist_losses_val)
+        hist_losses_main_train.extend(step_hist_losses_main_train)
+        hist_losses_main_val.extend(step_hist_losses_main_val)
+        all_pred_train.extend(step_all_pred_train)
+        all_pred_val.extend(step_all_pred_val)
+
+        # optimize additional loss
+        (step_all_pred_train, step_hist_losses_main_train, step_hist_losses_train, step_all_pred_val,
+         step_hist_losses_main_val, step_hist_losses_val) = run_step(
+            sess, config, args, data_gen, model, global_step_c, train_op_c, config['n_epochs_contr'], train_data,
+            val_data=val_data)
+        hist_losses_train.extend(step_hist_losses_train)
+        hist_losses_val.extend(step_hist_losses_val)
+        hist_losses_main_train.extend(step_hist_losses_main_train)
+        hist_losses_main_val.extend(step_hist_losses_main_val)
+        all_pred_train.extend(step_all_pred_train)
+        all_pred_val.extend(step_all_pred_val)
+
+        # optimize total loss
+        (step_all_pred_train, step_hist_losses_main_train, step_hist_losses_train, step_all_pred_val,
+         step_hist_losses_main_val, step_hist_losses_val) = run_step(
+            sess, config, args, data_gen, model, global_step_w_c, train_op_w_c, config['n_epochs_both'], train_data,
+            val_data=val_data)
+        hist_losses_train.extend(step_hist_losses_train)
+        hist_losses_val.extend(step_hist_losses_val)
+        hist_losses_main_train.extend(step_hist_losses_main_train)
+        hist_losses_main_val.extend(step_hist_losses_main_val)
+        all_pred_train.extend(step_all_pred_train)
+        all_pred_val.extend(step_all_pred_val)
+
+        # save model
+        if args['verbose'] == 1:
+            print("Save model...")
+        saver = tf.train.Saver()
+        if args['save_model']:
+            saver.save(sess, args['save_path'] + args["model_type"] + "_model")
+
+    return (
+        hist_losses_train, hist_losses_main_train,
+        hist_losses_val, hist_losses_main_val,
+        all_pred_train, all_pred_val
+    )
 
 
 def check_config(args, train_data, config):

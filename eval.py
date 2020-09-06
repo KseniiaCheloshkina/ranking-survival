@@ -9,71 +9,112 @@ import train
 from tools import test_quality
 
 
-def eval_kkbox():
+def eval():
+    print("----------------------------------------->")
+    print("Train model and evaluate for KKBOX dataset")
+    args, base_config_path, bin_config_path, contr_config_path, name = init_kkbox()
+    all_res = []
+    # Train base model
+    print("Start training base model...")
+    model_type = "base"
+    args_base = copy.deepcopy(args)
+    args_base.update({
+        'model_type': model_type,
+        'config_path': base_config_path
+    })
+    args_str = " ".join(["--" + arg_name + "=" + str(arg_val) for arg_name, arg_val in args_base.items()])
+    os.system('python train.py {}'.format(args_str))
+    # evaluate results
+    prediction_path = args_base['save_path'] + model_type + "val_pred.pkl"
+    with open(args_base['config_path'], 'rb') as f:
+        config = json.load(f)
+    df_quality = calc_stats(args_base['val_data_path'], prediction_path, config['time_grid'])
+    df_quality['model_type'] = model_type
+    all_res.append(df_quality)
+
+    # TODO: add cross-entropy and contrastive models
+    # bin_config_path
+    # contr_config_path
+
+    # save final results
+    df = pd.concat(all_res)
+    with open(args['save_path'] + "eval_metrics_" + name + ".pkl", 'wb') as f:
+        pickle.dump(df, f)
+    res_kkbox = df.sort_values('epoch').tail(1)
+    res_kkbox['dataset'] = name
+
+    print("----------------------------------------->")
+    print("Train model and evaluate for METABRIC dataset")
+    args, base_config_path, bin_config_path, contr_config_path = init_metabric()
+    all_res = []
+    # Train base model
+    print("Start training base model...")
+    model_type = "base"
+    args_base = copy.deepcopy(args)
+    args_base.update({
+        'model_type': model_type,
+        'config_path': base_config_path
+    })
+    args_str = " ".join(["--" + arg_name + "=" + str(arg_val) for arg_name, arg_val in args_base.items()])
+    os.system('python train.py {}'.format(args_str))
+    # evaluate results
+    prediction_path = args_base['save_path'] + model_type + "val_pred.pkl"
+    with open(args_base['config_path'], 'rb') as f:
+        config = json.load(f)
+    df_quality = calc_stats(args_base['val_data_path'], prediction_path, config['time_grid'])
+    df_quality['model_type'] = model_type
+    all_res.append(df_quality)
+
+    # TODO: add cross-entropy and contrastive models
+    # bin_config_path
+    # contr_config_path
+
+    # save final results
+    df = pd.concat(all_res)
+    with open(args['save_path'] + "eval_metrics_" + name + ".pkl", 'wb') as f:
+        pickle.dump(df, f)
+    res_metabric = df.sort_values('epoch').tail(1)
+    res_metabric['dataset'] = name
+    df_final = pd.concat([res_kkbox, res_metabric])
+    return df_final
+
+
+def init_kkbox():
+    name = 'kkbox'
     # define data and config
     args = dict(
         train_data_path="data/kkbox_preprocessed_train.pkl",
         val_data_path="data/kkbox_preprocessed_test.pkl",
         custom_bottom_function_name="kkbox_main_network",
-        verbose=0,
-        save_path="reproduce_kkbox/",
+        verbose=1,
+        save_path="data/reproduce_kkbox/",
         save_model=True,
         save_prediction=True,
-        config_path="data/config_kkbox.json"
     )
-    all_res = []
-
-    # Train base model
-    print("Start training base model...")
-    model_type = "base"
-    args_base = copy.deepcopy(args)
-    args_base.update({'model_type': model_type})
-    # os.command(train(args_base))
-    # evaluate results
-    prediction_path = args_base['save_path'] + model_type + "val_pred.pkl"
-    with open(args_base['config_path'], 'rb') as f:
-        config = json.load(f)
-    df_quality = calc_stats(args_base['val_data_path'], prediction_path, config['time_grid'])
-    df_quality['model_type'] = model_type
-    all_res.append(df_quality)
-
-    # Train cross-entropy model
-    print("Start training cross-entropy model...")
-    model_type = "binary"
-    args_binary = copy.deepcopy(args)
-    args_binary.update({'model_type': model_type})
-    # os.command(train(args_binary))
-    # evaluate results
-    prediction_path = args_base['save_path'] + model_type + "val_pred.pkl"
-    with open(args_base['config_path'], 'rb') as f:
-        config = json.load(f)
-    df_quality = calc_stats(args_base['val_data_path'], prediction_path, config['time_grid'])
-    df_quality['model_type'] = model_type
-    all_res.append(df_quality)
-
-    # Train contrastive model
-    print("Start training contrastive model...")
-    model_type = "contrastive"
-    args_contrastive = copy.deepcopy(args)
-    args_contrastive.update({'model_type': model_type})
-    # os.command(train(args_contrastive))
-    # evaluate results
-    prediction_path = args_base['save_path'] + model_type + "val_pred.pkl"
-    with open(args_base['config_path'], 'rb') as f:
-        config = json.load(f)
-    df_quality = calc_stats(args_base['val_data_path'], prediction_path, config['time_grid'])
-    df_quality['model_type'] = model_type
-    all_res.append(df_quality)
-
-    # save final results
-    df = pd.concat(all_res)
-    with open(args['save_path'] + "eval_metrics.pkl", 'wb') as f:
-        pickle.dump(df, f)
-    return df.sort_values('epoch').tail(1)
+    # define configs
+    base_config_path = "data/config_kkbox_base.json"
+    bin_config_path = "data/config_kkbox_binary.json"
+    contr_config_path = "data/config_kkbox_contrastive.json"
+    return args, base_config_path, bin_config_path, contr_config_path, name
 
 
-def eval_metabric():
-    pass
+def init_metabric():
+    name = 'metabric'
+    # define data and config
+    args = dict(
+        train_data_path="data/metabric_preprocessed_train.pkl",
+        val_data_path="data/metabric_preprocessed_test.pkl",
+        custom_bottom_function_name="metabric_main_network",
+        verbose=1,
+        save_path="data/reproduce_metabric/",
+        save_model=True,
+        save_prediction=True,
+    )
+    # define configs
+    base_config_path = "data/config_metabric_base.json"
+    bin_config_path = "data/config_metabric_binary.json"
+    contr_config_path = "data/config_metabric_contrastive.json"
+    return args, base_config_path, bin_config_path, contr_config_path, name
 
 
 def calc_stats(data_path, prediction_path, time_grid):
@@ -92,6 +133,7 @@ def calc_stats(data_path, prediction_path, time_grid):
         all_q.append(q)
     q = pd.concat(all_q)
     q.reset_index(drop=True, inplace=True)
+    # TODO: load model and evaluate loss
     # q['test_loss'] = ''
     # q['train_loss'] = ''
     # q.at[0, 'test_loss'] = val_loss
@@ -100,14 +142,5 @@ def calc_stats(data_path, prediction_path, time_grid):
 
 
 if __name__ == "__main__":
-    print("----------------------------------------->")
-    print("Train model and evaluate for KKBOX dataset")
-    df_kkbox = eval_kkbox()
-    df_kkbox['dataset'] = 'KKBOX'
-    print("----------------------------------------->")
-    print("Train model and evaluate for METABRIC dataset")
-    df_metabric = eval_metabric()
-    df_metabric['dataset'] = 'METABRIC'
-
-    df_final = pd.concat([df_metabric, df_kkbox])
+    df_final = eval()
     print(tabulate(df_final))
