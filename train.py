@@ -14,14 +14,13 @@ from batch_generators_hard_mining import DataGenerator
 
 
 def main(args):
+    train_data, val_data, config, seed = load_and_check(args)
+    train_save(args, train_data, val_data, config, seed)
+
+
+def load_and_check(args):
     if args['verbose'] == 1:
         print("Loading data...")
-    # read config
-    with open(args['config_path'], 'rb') as f:
-        config = json.load(f)
-    print("Current config: ")
-    print(config)
-
     # read training data
     with open(args['train_data_path'], 'rb') as f:
         train_data = pickle.load(f)
@@ -31,7 +30,13 @@ def main(args):
         val_data = pickle.load(f)
 
     # load custom bottom layers
-    exec('from custom_models import ' + args['custom_bottom_function_name'] + ' as custom_bottom')
+    exec('from custom_models import ' + args['custom_bottom_function_name'] + ' as custom_bottom', globals())
+
+    # read config
+    with open(args['config_path'], 'rb') as f:
+        config = json.load(f)
+    print("Current config: ")
+    print(config)
 
     # set seed for reproducibility
     if 'seed' in config.keys():
@@ -45,13 +50,17 @@ def main(args):
     os.environ['TF_CUDNN_DETERMINISTIC'] = str(seed)
 
     # check if save_path exists
-    if args['save_model'] or args['save_prediction']:
+    if args['save_prediction']:
         if not os.path.exists(args['save_path']):
             os.makedirs(args['save_path'])
 
     # check if all parameters are in config
     check_config(args, train_data, config)
 
+    return train_data, val_data, config, seed
+
+
+def train_save(args, train_data, val_data, config, seed):
     # initialize model
     if args['verbose'] == 1:
         print("Initialize model...")
@@ -60,32 +69,38 @@ def main(args):
     # train model
     if args['verbose'] == 1:
         print("Train model...")
-
     if args['model_type'] in ["base", "binary"]:
         train_output = train(
             args=args, train_data=train_data, val_data=val_data, config=config,
-            data_gen=data_gen, model=model, seed=seed)
+            data_gen=data_gen, model=model, seed=seed, optimizer=config['optimizer'])
     elif args['model_type'] == "contrastive":
         train_output = train_sequential(
             args=args, train_data=train_data, val_data=val_data, config=config,
-            data_gen=data_gen, model=model, seed=seed, optimizers=('sgd', 'adam', 'adam'))
+            data_gen=data_gen, model=model, seed=seed, optimizers=(
+                    config['optimizer'], config['optimizer_contr'], config['optimizer_both'])
+        )
     else:
         raise Exception("{} model type is not implemented".format(args['model_type']))
     (hist_loss_train, hist_loss_main_train, hist_loss_val, hist_loss_main_val, pred_train, pred_val) = train_output
 
-    if args['verbose'] == 1:
+    # save losses history
+    if args['save_losses'] or args['verbose'] == 1:
         df_losses = pd.DataFrame(
-            data=[hist_loss_train, hist_loss_main_train, hist_loss_val, hist_loss_main_val],
-            columns=['train_loss', 'train_main_loss', 'val_loss', 'val_main_loss']
-        )
-        print(tabulate(df_losses))
+            data=[hist_loss_train, hist_loss_main_train, hist_loss_val, hist_loss_main_val]
+        ).T
+        df_losses.columns = ['train_loss', 'train_main_loss', 'val_loss', 'val_main_loss']
+        if args['verbose'] == 1:
+            print(tabulate(df_losses))
+        if args['save_losses']:
+            df_losses.to_csv(args['save_path'] + args["model_type"] + '_losses.csv')
+
     # save prediction
     if args['save_prediction']:
         if args['verbose'] == 1:
             print("Save prediction...")
-        with open(args['save_path'] + args["model_type"] + "val_pred.pkl", 'wb') as f:
+        with open(args['save_path'] + args["model_type"] + "_val_pred.pkl", 'wb') as f:
             pickle.dump(pred_val, f)
-        with open(args['save_path'] + args["model_type"] + "train_pred.pkl", 'wb') as f:
+        with open(args['save_path'] + args["model_type"] + "_train_pred.pkl", 'wb') as f:
             pickle.dump(pred_train, f)
 
 
@@ -230,8 +245,9 @@ def train(args, train_data, config, data_gen, model, seed, optimizer='sgd', val_
         if args['verbose'] == 1:
             print("Save model...")
         saver = tf.train.Saver()
-        if args['save_model']:
+        if args['save_prediction']:
             saver.save(sess, args['save_path'] + args["model_type"] + "_model")
+
     return (
         hist_losses_train, hist_losses_main_train,
         hist_losses_val, hist_losses_main_val,
@@ -393,7 +409,7 @@ def train_sequential(args, train_data, config, data_gen, model, seed, val_data=N
         if args['verbose'] == 1:
             print("Save model...")
         saver = tf.train.Saver()
-        if args['save_model']:
+        if args['save_prediction']:
             saver.save(sess, args['save_path'] + args["model_type"] + "_model")
 
     return (
@@ -471,11 +487,11 @@ if __name__ == "__main__":
                         help='Whether to print detailed stats')
     # saving options
     parser.add_argument('--save_path', required=False, type=str, default='tmp/',
-                        help='Path to store data in case of save_model or save_prediction options is on')
-    parser.add_argument('--save_model', required=False, type=bool, choices=[True, False],
-                        default=False, help='Whether to save model to `save_path`_model.pkl')
+                        help='Path to store data in case of save_prediction options is on')
     parser.add_argument('--save_prediction', required=False, type=bool, choices=[True, False],
                         default=False, help='Whether to save predictions to `save_path`_pred.pkl')
+    parser.add_argument('--save_losses', required=False, type=bool, choices=[True, False],
+                        default=False, help='Whether to save losses history to `save_path`_losses.csv')
     arguments = vars(parser.parse_args())
     print("Arguments: ")
     print(arguments)
