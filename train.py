@@ -90,7 +90,7 @@ def train_save(args, train_data, val_data, config, seed):
         ).T
         df_losses.columns = ['train_loss', 'train_main_loss', 'val_loss', 'val_main_loss']
         if args['verbose'] == 1:
-            print(tabulate(df_losses))
+            print(tabulate(df_losses, headers=df_losses.columns))
         if args['save_losses']:
             df_losses.to_csv(args['save_path'] + args["model_type"] + '_losses.csv')
 
@@ -231,7 +231,7 @@ def train(args, train_data, config, data_gen, model, seed, optimizer='sgd', val_
                 hist_losses_val.append(val_loss[1])
 
                 if args['verbose'] == 1:
-                    print("Val loss at epoch {}: {}".format(i, val_loss))
+                    print("(Val main loss, val loss) at epoch {}: {}".format(i, val_loss))
 
             # get prediction for training data
             pred_train = sess.run(model.o1, feed_dict={model.x: train_data['x']})
@@ -315,7 +315,12 @@ def run_step(sess, config, args, data_gen, model, global_step, train_op, n_epoch
             all_pred_val.append(pred_val)
 
             # get loss for validation data
+            print(val_data)
+            print(config)
+            print(model.main_loss)
+            print(model.loss)
             val_loss = get_loss_batch(val_data, config, sess, [model.main_loss, model.loss])
+            print(val_loss)
             hist_losses_main_val.append(val_loss[0])
             hist_losses_val.append(val_loss[1])
 
@@ -489,9 +494,9 @@ if __name__ == "__main__":
     parser.add_argument('--save_path', required=False, type=str, default='tmp/',
                         help='Path to store data in case of save_prediction options is on')
     parser.add_argument('--save_prediction', required=False, type=bool, choices=[True, False],
-                        default=False, help='Whether to save predictions to `save_path`_pred.pkl')
+                        default=False, help='Whether to save predictions to `save_path`/`model_type`_pred.pkl')
     parser.add_argument('--save_losses', required=False, type=bool, choices=[True, False],
-                        default=False, help='Whether to save losses history to `save_path`_losses.csv')
+                        default=False, help='Whether to save losses history to `save_path`/`model_type`_losses.csv')
     arguments = vars(parser.parse_args())
     print("Arguments: ")
     print(arguments)

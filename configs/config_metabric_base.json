@@ -9,7 +9,7 @@
   "n_ex_bin": 3,
   "val_n_ex_bin": 300,
 
-  "n_epochs": 2,
+  "n_epochs": 60,
   "step_rate": 10,
   "decay": 0.9,
   "learning_rate": 0.001,
