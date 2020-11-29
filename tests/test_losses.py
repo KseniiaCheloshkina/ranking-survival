@@ -13,7 +13,7 @@ from losses import get_contrastive_positive_label, calc_batch_distances, batch_h
 def test_losses_hard_mining():
     np.random.seed(1)
     # load metabric
-    with open('data/metabric.pkl', 'rb') as f:
+    with open('../data/metabric.pkl', 'rb') as f:
         [
             (_, _),
             (_, _),

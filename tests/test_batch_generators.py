@@ -11,7 +11,7 @@ from batch_generators_hard_mining import get_valid_pairs_tf, get_valid_pairs, Da
 def test_bg():
     # load metabric
     np.random.seed(1)
-    with open('data/metabric.pkl', 'rb') as f:
+    with open('../data/metabric.pkl', 'rb') as f:
         [
             (_, _),
             (_, _),
