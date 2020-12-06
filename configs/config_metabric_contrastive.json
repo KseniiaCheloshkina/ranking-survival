@@ -12,13 +12,13 @@
   "margin_weight": 1,
   "contrastive_weight": 0.1,
 
-  "n_epochs": 15,
+  "n_epochs": 200,
   "step_rate": 10,
   "decay": 0.9,
   "learning_rate": 0.001,
   "optimizer": "sgd",
 
-  "n_epochs_contr": 10,
+  "n_epochs_contr": 80,
   "learning_rate_contr": 0.0005,
   "step_rate_contr": 5,
   "decay_contr": 0.9,

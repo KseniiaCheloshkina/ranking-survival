@@ -25,6 +25,9 @@ def load_and_check(args):
     with open(args['train_data_path'], 'rb') as f:
         train_data = pickle.load(f)
 
+    print(train_data['y'])
+    print(train_data['t'])
+
     # read validation data
     with open(args['val_data_path'], 'rb') as f:
         val_data = pickle.load(f)
@@ -315,12 +318,7 @@ def run_step(sess, config, args, data_gen, model, global_step, train_op, n_epoch
             all_pred_val.append(pred_val)
 
             # get loss for validation data
-            print(val_data)
-            print(config)
-            print(model.main_loss)
-            print(model.loss)
             val_loss = get_loss_batch(val_data, config, sess, [model.main_loss, model.loss])
-            print(val_loss)
             hist_losses_main_val.append(val_loss[0])
             hist_losses_val.append(val_loss[1])
 
@@ -461,14 +459,13 @@ def check_config(args, train_data, config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train model on given dataset')
     # running options
-    # TODO: type of y
     parser.add_argument('--train_data_path', required=True, type=str,
                         help='''
                         Path to pickle file to train model on. 
                         Format: pickle file contains a dictionary with 3 keys:
                         x - features numpy array (n_samples, n_features)
-                        y - event label numpy array (n_samples, )
-                        t - duration label numpy array of type float (n_samples, )
+                        y - event label numpy array of type int (n_samples, )
+                        t - duration label numpy array of type int (n_samples, )
                         ''')
     parser.add_argument('--val_data_path', required=False, type=str,
                         help='''
@@ -501,4 +498,3 @@ if __name__ == "__main__":
     print("Arguments: ")
     print(arguments)
     main(arguments)
-    # TODO: before testing save preprocessed datasets

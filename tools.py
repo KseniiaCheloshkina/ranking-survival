@@ -136,7 +136,7 @@ def preprocess_kkbox(df):
 
 
 def transform_kkbox(x_train, x_test, x_val):
-    cols_to_scale = [i  for i in range(33, 40)]
+    cols_to_scale = [i for i in range(33, 40)]
     # fit scaler
     st_sc = StandardScaler().fit(X=x_train[:, cols_to_scale])
     # transform

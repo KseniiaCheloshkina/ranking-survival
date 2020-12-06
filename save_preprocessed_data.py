@@ -2,8 +2,10 @@ import pickle
 
 import pandas as pd
 import numpy as np
-from pycox.datasets import metabric
+from pycox.datasets import metabric, kkbox_v1
 from sklearn.model_selection import StratifiedKFold
+
+from tools import preprocess_kkbox, transform_kkbox
 
 
 def get_metabric():
@@ -50,12 +52,50 @@ def get_metabric():
             }
         }
     for i in range(5):
-        with open('data/metabric/metabric_preprocessed_cv_{}_train.pkl'.format(i), 'wb') as f:
+        with open('data/input_metabric/metabric_preprocessed_cv_{}_train.pkl'.format(i), 'wb') as f:
             pickle.dump(df_cv_data[i]['train'], f)
-        with open('data/metabric/metabric_preprocessed_cv_{}_test.pkl'.format(i), 'wb') as f:
+        with open('data/input_metabric/metabric_preprocessed_cv_{}_test.pkl'.format(i), 'wb') as f:
             pickle.dump(df_cv_data[i]['test'], f)
+
+
+def get_kkbox():
+    df_train = kkbox_v1.read_df(subset='train')
+    df_test = kkbox_v1.read_df(subset='test')
+    df_val = kkbox_v1.read_df(subset='val')
+
+    x_train, t_train, y_train = preprocess_kkbox(df_train)
+    x_val, t_val, y_val = preprocess_kkbox(df_val)
+    x_test, t_test, y_test = preprocess_kkbox(df_test)
+
+    x_train, x_test, x_val = transform_kkbox(x_train, x_test, x_val)
+
+    data = {
+        'x': x_train,
+        'y': y_train,
+        't': t_train
+    }
+    with open('data/input_kkbox/kkbox_preprocessed_train.pkl', 'wb') as f:
+        pickle.dump(data, f)
+
+    data = {
+        'x': x_test,
+        'y': y_test,
+        't': t_test
+    }
+    with open('data/input_kkbox/kkbox_preprocessed_test.pkl', 'wb') as f:
+        pickle.dump(data, f)
+
+    data = {
+        'x': x_val,
+        'y': y_val,
+        't': t_val
+    }
+    with open('data/input_kkbox/kkbox_preprocessed_val.pkl', 'wb') as f:
+        pickle.dump(data, f)
 
 
 if __name__ == "__main__":
     print("Saving metabric...")
     get_metabric()
+    print("Saving kkbox...")
+    get_kkbox()
