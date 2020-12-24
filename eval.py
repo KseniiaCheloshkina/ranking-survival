@@ -5,22 +5,22 @@ import pandas as pd
 import numpy as np
 import json
 from tabulate import tabulate
-import tensorflow as tf
+# import tensorflow as tf
 
-import train
+# import train
 from tools import test_quality
 
 
 def eval_kkbox():
     print("----------------------------------------->")
-    print("Train model and evaluate for METABRIC dataset")
-    args, base_config_path, bin_config_path, contr_config_path, name = init_metabric()
+    print("Train model and evaluate for KKBOX dataset")
+    args, base_config_path, bin_config_path, contr_config_path, name = init_kkbox()
     all_res = []
 
     name_model = [
         ('base', base_config_path),
-        ('binary', bin_config_path),
-        ('contrastive', contr_config_path)
+        # ('binary', bin_config_path),
+        # ('contrastive', contr_config_path)
     ]
 
     for model_type, config_path in name_model:
@@ -33,10 +33,10 @@ def eval_kkbox():
         pickle.dump(df, f)
     df.reset_index(inplace=True)
     df = df.rename(columns={'index': 'epoch'})
-    res_metabric = df.sort_values('epoch')
-    res_metabric['dataset'] = name
-    res_metabric.to_csv(args['save_path'] + "report.csv")
-    return res_metabric
+    res = df.sort_values('epoch')
+    res['dataset'] = name
+    res.to_csv(args['save_path'] + "report.csv")
+    return res
 
 
 def eval_metabric():
@@ -77,7 +77,7 @@ def train_one_model(args, config_path, model_type):
     })
     args_str = " ".join(["--" + arg_name + "=" + str(arg_val) for arg_name, arg_val in args_base.items()])
     print(args_str)
-    os.system('python3.6 train.py {}'.format(args_str))
+    os.system('python3.7 train.py {}'.format(args_str))
     # evaluate results
     prediction_path = args_base['save_path'] + model_type + "_val_pred.pkl"
     with open(args_base['config_path'], 'rb') as f:
@@ -147,14 +147,15 @@ def calc_stats(args, config, prediction_path):
 
 
 if __name__ == "__main__":
-    df_final = eval_metabric()
-    # res_kkbox = eval_kkbox()
+    # df_final = eval_metabric()
+    res_kkbox = eval_kkbox()
     # df_final = pd.concat([res_kkbox, df_final])
-    df_final['rank'] = df_final.groupby(['dataset', 'model_type', 'cv'])['epoch'].rank(ascending=False)
-    df_final = df_final[df_final['rank'] == 1].drop(['rank'], axis=1)
-    df_final.drop(['epoch'], axis=1, inplace=True)
-    df_final = df_final.groupby(['dataset', 'model_type']).agg({
-        'train_loss': 'mean', 'train_main_loss': 'mean', 'val_loss': 'mean', 'val_main_loss': 'mean',
-        'dt_c_index': 'mean', 'int_brier_score': 'mean', 'int_nbill': 'mean'
-    })
-    print(tabulate(df_final, headers=df_final.columns))
+    # df_final['rank'] = df_final.groupby(['dataset', 'model_type', 'cv'])['epoch'].rank(ascending=False)
+    # df_final = df_final[df_final['rank'] == 1].drop(['rank'], axis=1)
+    # df_final.drop(['epoch'], axis=1, inplace=True)
+    # df_final = df_final.groupby(['dataset', 'model_type']).agg({
+    #     'train_loss': 'mean', 'train_main_loss': 'mean', 'val_loss': 'mean', 'val_main_loss': 'mean',
+    #     'dt_c_index': 'mean', 'int_brier_score': 'mean', 'int_nbill': 'mean'
+    # })
+    # print(tabulate(df_final, headers=df_final.columns))
+    print(tabulate(res_kkbox, headers=res_kkbox.columns))

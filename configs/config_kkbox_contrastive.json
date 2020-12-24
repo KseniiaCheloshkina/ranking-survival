@@ -5,12 +5,16 @@
   "alpha_random_stddev": 5,
   "beta_random_stddev": 5,
   "n_time_bins": 10,
-  "time_grid": [30, 60, 90, 120, 150, 180, 210, 240, 270, 300],
+  "time_grid": [
+    1,  29,  57,  85, 113, 142, 170, 198, 226, 255, 283, 311, 339,
+    368, 396, 424, 452, 481, 509, 537, 565, 594, 622, 650, 678, 707,
+    735, 763, 791, 820
+  ],
   "n_ex_bin": 30,
   "val_n_ex_bin": 1000,
 
   "margin_weight": 1,
-  "contrastive_weight": 1e-7,
+  "contrastive_weight": 0.1,
 
   "n_epochs": 15,
   "step_rate": 10,
@@ -23,9 +27,9 @@
   "decay_contr": 0.9,
   "momentum_contr": 0.9,
 
-  "n_epochs_both": 15,
+  "n_epochs_both": 50,
   "learning_rate_both": 0.00025,
-  "step_rate_both": 5,
-  "decay_both": 0.9,
+  "step_rate_both": 15,
+  "decay_both": 0.1,
   "momentum_both": 0.9
 }
