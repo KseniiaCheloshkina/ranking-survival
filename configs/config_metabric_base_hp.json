@@ -1,0 +1,16 @@
+{
+  "seed": 2,
+  "alpha_reg": [1e-6, 1e-3],
+  "alpha_bias_random_mean": 1,
+  "alpha_random_stddev": 2,
+  "beta_random_stddev": 2,
+  "n_time_bins": 10,
+  "time_grid": [30, 60, 90, 120, 150, 180, 210, 240, 270, 300],
+  "n_ex_bin": 3,
+  "val_n_ex_bin": 300,
+  "n_epochs": 1,
+  "step_rate": 10,
+  "decay": 0.9,
+  "learning_rate": 0.001,
+  "optimizer": "sgd"
+}

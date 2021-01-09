@@ -5,16 +5,14 @@ import pandas as pd
 import numpy as np
 import json
 from tabulate import tabulate
-# import tensorflow as tf
 
-# import train
 from tools import test_quality
 
 
 def eval_kkbox():
     print("----------------------------------------->")
     print("Train model and evaluate for KKBOX dataset")
-    args, base_config_path, bin_config_path, contr_config_path, name = init_kkbox()
+    args, base_config_path, bin_config_path, contr_config_path, name, report_path = init_kkbox()
     all_res = []
 
     name_model = [
@@ -29,13 +27,13 @@ def eval_kkbox():
 
     # save final results
     df = pd.concat(all_res)
-    with open(args['save_path'] + "eval_metrics_" + name + ".pkl", 'wb') as f:
+    with open(report_path + "eval_metrics_" + name + ".pkl", 'wb') as f:
         pickle.dump(df, f)
     df.reset_index(inplace=True)
     df = df.rename(columns={'index': 'epoch'})
     res = df.sort_values('epoch')
     res['dataset'] = name
-    res.to_csv(args['save_path'] + "report.csv")
+    res.to_csv(report_path + "report.csv")
     return res
 
 
@@ -103,7 +101,8 @@ def init_kkbox():
     base_config_path = "configs/config_kkbox_base.json"
     bin_config_path = "configs/config_kkbox_binary.json"
     contr_config_path = "configs/config_kkbox_contrastive.json"
-    return args, base_config_path, bin_config_path, contr_config_path, name
+    report_path = "data/reproduce_kkbox/"
+    return args, base_config_path, bin_config_path, contr_config_path, name, report_path
 
 
 def init_metabric(cv=0):
