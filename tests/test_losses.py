@@ -1,10 +1,12 @@
 import pickle
 import sys
-
+import os
 import numpy as np
 import tensorflow as tf
 
-sys.path.append(".")
+sys.path.append(os.path.join(os.getcwd(), "data"))
+sys.path.append(os.getcwd())
+
 from batch_generators_hard_mining import get_valid_pairs_tf, DataGenerator
 from losses import get_contrastive_positive_label, calc_batch_distances, batch_hard_sampling_contrastive_loss, \
     get_contrastive_negative_label, batch_hard_sampling_cross_entropy_loss, get_delta_time_sample_weight
@@ -13,7 +15,7 @@ from losses import get_contrastive_positive_label, calc_batch_distances, batch_h
 def test_losses_hard_mining():
     np.random.seed(1)
     # load metabric
-    with open('../data/metabric.pkl', 'rb') as f:
+    with open('data/metabric.pkl', 'rb') as f:
         [
             (_, _),
             (_, _),

@@ -1,17 +1,19 @@
 import pickle
 import sys
-
+import os
 import numpy as np
 import tensorflow as tf
 
-sys.path.append(".")
+sys.path.append(os.path.join(os.getcwd(), "data"))
+sys.path.append(os.getcwd())
+
 from batch_generators_hard_mining import get_valid_pairs_tf, get_valid_pairs, DataGenerator
 
 
 def test_bg():
     # load metabric
     np.random.seed(1)
-    with open('../data/metabric.pkl', 'rb') as f:
+    with open('data/metabric.pkl', 'rb') as f:
         [
             (_, _),
             (_, _),

@@ -4,8 +4,72 @@ import argparse
 import copy
 from sklearn.model_selection import ParameterGrid
 import pandas as pd
+from tabulate import tabulate
+import seaborn as sns
 
 from eval import calc_stats
+
+
+def get_summary(csv_path):
+    data = pd.read_csv(csv_path, index_col=0)
+    # results on last epoch
+    data['rn'] = data.groupby(['config', 'val_path', 'train_path'])['epoch'].rank(ascending=False)
+    last_epoch_data = data[data['rn'] == 1]
+    last_epoch_data.drop(['epoch', 'rn'], axis=1, inplace=True)
+
+    # parse config
+    def get_config_vals(x):
+        return pd.DataFrame([json.loads(x.replace("'", "\""))])
+
+    all_config_vals = []
+    for idx, row in last_epoch_data.iterrows():
+        all_config_vals.append(get_config_vals(row['config']))
+    all_config_vals = pd.concat(all_config_vals, axis=0)
+    config_params_names = list(all_config_vals.columns)
+    last_epoch_data_final = pd.concat(
+        [last_epoch_data.reset_index(drop=True), all_config_vals.reset_index(drop=True)], axis=1)
+
+    # median values
+    med_vals = (
+        last_epoch_data_final
+        .groupby(['config'])
+        .agg({'dt_c_index': 'median', 'int_brier_score': 'median', 'int_nbill': 'median'})
+        .sort_values(['dt_c_index', 'int_brier_score', 'int_nbill'], ascending=[False, True, True])
+        .reset_index()
+    )
+    all_config_vals = []
+    for idx, row in med_vals.iterrows():
+        all_config_vals.append(get_config_vals(row['config']))
+    all_config_vals = pd.concat(all_config_vals, axis=0)
+    med_vals = pd.concat(
+        [med_vals.reset_index(drop=True), all_config_vals.reset_index(drop=True)], axis=1)
+    med_vals.drop(['config'], axis=1, inplace=True)
+    print("Median values at last epoch :\n{}".format(tabulate(med_vals, headers=med_vals.columns)))
+    print("Best configuration:\n{}".format(
+        tabulate(med_vals.head(1)[config_params_names], headers=config_params_names)))
+
+    # plot quality distribution by each changing hyperparameter
+    save_path = "output.png"
+    csv_paths = csv_path.split("/")
+    if len(csv_paths) > 1:
+        save_path = "/".join(csv_paths[:-1]) + "/output.png"
+    changing_cols = {col: med_vals[col].nunique() for col in config_params_names
+                     if not isinstance(med_vals[col].values[0], list)}
+    changing_cols = [col for col, val in changing_cols.items() if val > 1]
+    df = []
+    for col in changing_cols:
+        new_df = med_vals.copy(deep=True)
+        new_df['changing_col_name'] = col
+        new_df['changing_col_val'] = new_df[col]
+        df.append(new_df)
+    df = pd.concat(df)
+    metr_cols = ['dt_c_index', 'int_brier_score', 'int_nbill']
+    df_melted = pd.melt(df, id_vars=['changing_col_val', 'changing_col_name'], value_vars=metr_cols,
+                        var_name="metric_name", value_name="metric_val")
+    sns_plot = sns.catplot(data=df_melted, x='changing_col_val', y='metric_val', col='changing_col_name',
+                           row='metric_name', kind='box', sharey=False)
+    sns_plot.savefig(save_path)
+    print("Plot saved to {}".format(save_path))
 
 
 def main(args):
@@ -13,7 +77,7 @@ def main(args):
     with open(args['config_path'], 'rb') as f:
         config = json.load(f)
     base_tunable_params = [
-        'alpha_reg',  'alpha_bias_random_mean', 'alpha_random_stddev', 'beta_random_stddev', 'n_time_bins', 'n_ex_bin',
+        'alpha_reg', 'alpha_bias_random_mean', 'alpha_random_stddev', 'beta_random_stddev', 'n_time_bins', 'n_ex_bin',
         'n_epochs', 'step_rate', 'decay', 'learning_rate', 'optimizer']
     grid = {k: v if isinstance(v, list) else [v] for k, v in config.items() if k in base_tunable_params}
     grid = list(ParameterGrid(grid))
@@ -33,7 +97,8 @@ def main(args):
         current_train_args = copy.deepcopy(train_args)
         for train_path, val_path in zip(args['train_data_paths'], args['val_data_paths']):
             current_train_args.update({'train_data_path': train_path, 'val_data_path': val_path})
-            args_str = " ".join(["--" + arg_name + "=" + str(arg_val) for arg_name, arg_val in current_train_args.items()])
+            args_str = " ".join(
+                ["--" + arg_name + "=" + str(arg_val) for arg_name, arg_val in current_train_args.items()])
             print(args_str)
             # train
             os.system('python3.7 train.py {}'.format(args_str))
@@ -43,11 +108,16 @@ def main(args):
             df_quality['config'] = str(config)
             df_quality['val_path'] = val_path
             df_quality['train_path'] = train_path
+            col_list = df_quality.columns
+            new_col_list = ['epoch']
+            new_col_list.extend(col_list)
+            df_quality.reset_index(inplace=True)
+            df_quality.columns = new_col_list
             all_res.append(df_quality)
-    pd.concat(all_res).to_csv(current_train_args['save_path'] + "eval_metrics.csv")
+            pd.concat(all_res).to_csv(current_train_args['save_path'] + "eval_metrics.csv")
 
 
-if __name__ =="__main__":
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train model on given dataset')
     # running options
     parser.add_argument('--train_data_paths', nargs="+", required=True, type=str,
