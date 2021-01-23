@@ -12,9 +12,10 @@
   ],
   "n_ex_bin": 60,
   "val_n_ex_bin": 1000,
+  "cross_entropy_weight": [0.1, 0.5, 0.8],
   "n_epochs": 30,
   "step_rate": 10,
   "decay": 0.9,
-  "learning_rate": 0.005,
+  "learning_rate": [0.005, 0.01],
   "optimizer": "adam"
 }

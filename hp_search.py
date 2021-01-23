@@ -10,6 +10,28 @@ import seaborn as sns
 from eval import calc_stats
 
 
+def printProgressBar(iteration, total, prefix='', suffix='', decimals=1, length=100, fill='█', printEnd="\r"):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end=printEnd)
+    # Print New Line on Complete
+    if iteration == total:
+        print()
+
+
 def get_summary(csv_path):
     data = pd.read_csv(csv_path, index_col=0)
     # results on last epoch
@@ -62,28 +84,33 @@ def get_summary(csv_path):
         new_df['changing_col_name'] = col
         new_df['changing_col_val'] = new_df[col]
         df.append(new_df)
-    df = pd.concat(df)
-    metr_cols = ['dt_c_index', 'int_brier_score', 'int_nbill']
-    df_melted = pd.melt(df, id_vars=['changing_col_val', 'changing_col_name'], value_vars=metr_cols,
-                        var_name="metric_name", value_name="metric_val")
-    sns_plot = sns.catplot(data=df_melted, x='changing_col_val', y='metric_val', col='changing_col_name',
-                           row='metric_name', kind='box', sharey=False)
-    sns_plot.savefig(save_path)
-    print("Plot saved to {}".format(save_path))
+    if df != list():
+        df = pd.concat(df)
+        metr_cols = ['dt_c_index', 'int_brier_score', 'int_nbill']
+        df_melted = pd.melt(df, id_vars=['changing_col_val', 'changing_col_name'], value_vars=metr_cols,
+                            var_name="metric_name", value_name="metric_val")
+        sns_plot = sns.catplot(data=df_melted, x='changing_col_val', y='metric_val', col='changing_col_name',
+                               row='metric_name', kind='box', sharey=False)
+        sns_plot.savefig(save_path)
+        print("Plot saved to {}".format(save_path))
 
 
 def main(args):
     # generate list of configs
     with open(args['config_path'], 'rb') as f:
         config = json.load(f)
-    base_tunable_params = [
+    tunable_params = [
         'alpha_reg', 'alpha_bias_random_mean', 'alpha_random_stddev', 'beta_random_stddev', 'n_time_bins', 'n_ex_bin',
-        'n_epochs', 'step_rate', 'decay', 'learning_rate', 'optimizer']
-    grid = {k: v if isinstance(v, list) else [v] for k, v in config.items() if k in base_tunable_params}
+        'n_epochs', 'step_rate', 'decay', 'learning_rate', 'optimizer',
+        'cross_entropy_weight', 'margin_weight', 'contrastive_weight',
+        'n_epochs_contr', 'learning_rate_contr', 'step_rate_contr', 'decay_contr', 'momentum_contr', 'optimizer_contr',
+        'n_epochs_both', 'learning_rate_both', 'step_rate_both', 'decay_both', 'momentum_both', 'optimizer_both'
+    ]
+    grid = {k: v if isinstance(v, list) else [v] for k, v in config.items() if k in tunable_params}
     grid = list(ParameterGrid(grid))
     full_grid = []
     for conf in grid:
-        conf.update({k: v for k, v in config.items() if k not in base_tunable_params})
+        conf.update({k: v for k, v in config.items() if k not in tunable_params})
         full_grid.append(conf)
 
     # for each config for each train-val pair train model
@@ -91,7 +118,8 @@ def main(args):
                   arg_key not in ['train_data_paths', 'val_data_paths', 'config_path']}
     train_args.update({'config_path': 'tmp_config.json'})
     all_res = []
-    for config in full_grid:
+    printProgressBar(0, len(full_grid), prefix='Progress:', suffix='Complete', length=50)
+    for pr_bar_num, config in enumerate(full_grid):
         with open("tmp_config.json", 'w') as f:
             json.dump(config, f)
         current_train_args = copy.deepcopy(train_args)
@@ -114,7 +142,12 @@ def main(args):
             df_quality.reset_index(inplace=True)
             df_quality.columns = new_col_list
             all_res.append(df_quality)
+            # save after each run
             pd.concat(all_res).to_csv(current_train_args['save_path'] + "eval_metrics.csv")
+            # Update Progress Bar
+            printProgressBar(pr_bar_num, len(full_grid), prefix='Progress:', suffix='Complete', length=50)
+    # analyze results
+    get_summary(current_train_args['save_path'] + "eval_metrics.csv")
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@
   "val_n_ex_bin": 1000,
 
   "margin_weight": 1,
-  "contrastive_weight": 0.1,
+  "contrastive_weight": [0.1, 0.5],
 
   "n_epochs": 15,
   "step_rate": 10,

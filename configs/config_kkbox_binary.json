@@ -1,23 +1,23 @@
 {
-  "seed": 5,
-  "alpha_reg": 1e-5,
+  "seed": 2,
+  "alpha_reg": 1e-9,
   "alpha_bias_random_mean": 10,
   "alpha_random_stddev": 5,
   "beta_random_stddev": 5,
-  "n_time_bins": 10,
+  "n_time_bins": 12,
   "time_grid": [
     1,  29,  57,  85, 113, 142, 170, 198, 226, 255, 283, 311, 339,
     368, 396, 424, 452, 481, 509, 537, 565, 594, 622, 650, 678, 707,
     735, 763, 791, 820
   ],
-  "n_ex_bin": 30,
+  "n_ex_bin": 60,
   "val_n_ex_bin": 1000,
 
-  "cross_entropy_weight": 2,
+  "cross_entropy_weight": 0.5,
 
   "n_epochs": 30,
   "step_rate": 10,
   "decay": 0.9,
-  "learning_rate": 0.001,
-  "optimizer": "sgd"
+  "learning_rate": 0.005,
+  "optimizer": "adam"
 }

@@ -146,15 +146,15 @@ def calc_stats(args, config, prediction_path):
 
 
 if __name__ == "__main__":
-    # df_final = eval_metabric()
-    res_kkbox = eval_kkbox()
+    df_final = eval_metabric()
+    # res_kkbox = eval_kkbox()
     # df_final = pd.concat([res_kkbox, df_final])
-    # df_final['rank'] = df_final.groupby(['dataset', 'model_type', 'cv'])['epoch'].rank(ascending=False)
-    # df_final = df_final[df_final['rank'] == 1].drop(['rank'], axis=1)
-    # df_final.drop(['epoch'], axis=1, inplace=True)
-    # df_final = df_final.groupby(['dataset', 'model_type']).agg({
-    #     'train_loss': 'mean', 'train_main_loss': 'mean', 'val_loss': 'mean', 'val_main_loss': 'mean',
-    #     'dt_c_index': 'mean', 'int_brier_score': 'mean', 'int_nbill': 'mean'
-    # })
-    # print(tabulate(df_final, headers=df_final.columns))
-    print(tabulate(res_kkbox, headers=res_kkbox.columns))
+    df_final['rank'] = df_final.groupby(['dataset', 'model_type', 'cv'])['epoch'].rank(ascending=False)
+    df_final = df_final[df_final['rank'] == 1].drop(['rank'], axis=1)
+    df_final.drop(['epoch'], axis=1, inplace=True)
+    df_final = df_final.groupby(['dataset', 'model_type']).agg({
+        'train_loss': 'mean', 'train_main_loss': 'mean', 'val_loss': 'mean', 'val_main_loss': 'mean',
+        'dt_c_index': 'mean', 'int_brier_score': 'mean', 'int_nbill': 'mean'
+    })
+    print(tabulate(df_final, headers=df_final.columns))
+    # print(tabulate(res_kkbox, headers=res_kkbox.columns))
