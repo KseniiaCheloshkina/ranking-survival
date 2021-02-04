@@ -144,4 +144,3 @@ def transform_kkbox(x_train, x_test, x_val):
     x_test[:, cols_to_scale] = st_sc.transform(x_test[:, cols_to_scale])
     x_val[:, cols_to_scale] = st_sc.transform(x_val[:, cols_to_scale])
     return x_train, x_test, x_val
-    
