@@ -6,6 +6,7 @@ from sklearn.model_selection import ParameterGrid
 import pandas as pd
 from tabulate import tabulate
 import seaborn as sns
+import matplotlib.pyplot as plt
 
 from eval import calc_stats
 
@@ -32,6 +33,10 @@ def printProgressBar(iteration, total, prefix='', suffix='', decimals=1, length=
         print()
 
 
+def get_config_vals(x):
+    return pd.DataFrame([json.loads(x.replace("'", "\""))])
+
+
 def get_summary(csv_path):
     data = pd.read_csv(csv_path, index_col=0)
     # results on last epoch
@@ -40,9 +45,6 @@ def get_summary(csv_path):
     last_epoch_data.drop(['epoch', 'rn'], axis=1, inplace=True)
 
     # parse config
-    def get_config_vals(x):
-        return pd.DataFrame([json.loads(x.replace("'", "\""))])
-
     all_config_vals = []
     for idx, row in last_epoch_data.iterrows():
         all_config_vals.append(get_config_vals(row['config']))
@@ -148,6 +150,29 @@ def main(args):
             printProgressBar(pr_bar_num, len(full_grid), prefix='Progress:', suffix='Complete', length=50)
     # analyze results
     get_summary(current_train_args['save_path'] + "eval_metrics.csv")
+    plot_results(current_train_args['save_path'] + "eval_metrics.csv")
+
+
+def plot_results(path):
+    df = pd.read_csv(path, index_col=0)
+    all_config_vals = []
+    for idx, row in df.iterrows():
+        all_config_vals.append(get_config_vals(row['config']))
+    all_config_vals = pd.concat(all_config_vals, axis=0)
+    config_params_names = list(all_config_vals.columns)
+    changing_cols = {col: all_config_vals[col].nunique() for col in config_params_names
+                     if not isinstance(all_config_vals[col].values[0], list)}
+    changing_cols = [col for col, val in changing_cols.items() if val > 1]
+    if changing_cols == list():
+        df['config'] = 'single config'
+    else:
+        df['config'] = [str(params) for params in all_config_vals[changing_cols].to_dict('records')]
+    df_melted = pd.melt(df, id_vars=['config', 'epoch', 'val_path', 'train_path'])
+    df_melted.drop(df_melted.loc[(df_melted['variable'] == 'val_loss') & (df_melted['epoch'] < 28)].index, axis=0, inplace=True)
+    df_melted.drop(df_melted.loc[(df_melted['variable'] == 'train_loss') & (df_melted['epoch'] < 28)].index, axis=0,
+                   inplace=True)
+    sns_plot = sns.catplot(data=df_melted, hue='config', x='epoch', y='value', row='variable', sharey=False, kind='point')
+    sns_plot.savefig(path.replace(".csv", ""))
 
 
 if __name__ == "__main__":
